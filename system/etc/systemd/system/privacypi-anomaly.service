@@ -1,0 +1,7 @@
+[Unit]
+Description=PrivacyPi DNS anomaly detection (IsolationForest)
+After=AdGuardHome.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/privacypi/scripts/anomaly-detect.py --window-minutes 60 --out /var/lib/privacypi/anomalies.json

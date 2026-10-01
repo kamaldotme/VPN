@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block heading %}VPN Providers{% endblock %}
+{% block subheading %}Connect a provider, then choose it on the Routing page.{% endblock %}
+{% block content %}
+
+{% set meta = {
+  'nordvpn': ('NordVPN','OpenVPN / WireGuard'),
+  'expressvpn': ('ExpressVPN','OpenVPN'),
+  'mullvad': ('Mullvad','WireGuard'),
+  'protonvpn': ('Proton VPN','OpenVPN / WireGuard'),
+  'ivpn': ('IVPN','WireGuard'),
+  'surfshark': ('Surfshark','OpenVPN'),
+  'airvpn': ('AirVPN','OpenVPN / WireGuard'),
+  'custom-ovpn': ('Custom OpenVPN','.ovpn upload'),
+  'custom-wg': ('Custom WireGuard','.conf upload'),
+} %}
+
+<div class="card mb-4">
+  <p class="section-title">How to connect</p>
+  <div class="steps">
+    <div class="step"><b>1</b> Enter your account credentials or upload a config file</div>
+    <div class="step"><b>2</b> Open <span class="text-accent">Routing</span> and pick OpenVPN or WireGuard</div>
+    <div class="step"><b>3</b> Watch the dashboard confirm a new public IP</div>
+  </div>
+</div>
+
+<div class="grid-auto">
+  {% for p in providers %}
+  {% set name = meta.get(p, (p|replace('-',' ')|title, 'VPN'))[0] %}
+  {% set kind = meta.get(p, ('', 'VPN'))[1] %}
+  <div class="tile" data-provider="{{ p }}">
+    <div class="tile-head">
+      <div class="avatar">{{ name[:2]|upper }}</div>
+      <div style="flex:1">
+        <div class="tile-name">{{ name }}</div>
+        <div class="tile-meta">{{ kind }}</div>
+      </div>
+      <span class="badge vpn-state">not set</span>
+    </div>
+
+    <form class="vpn-creds" data-provider="{{ p }}">
+      <div class="field" style="margin-bottom:8px">
+        <input name="username" placeholder="Username / account" autocomplete="off">
+      </div>
+      <div class="flex gap-2">
+        <input type="password" name="password" placeholder="Password" autocomplete="off" style="flex:1">
+        <button class="btn btn-primary btn-sm" type="submit">Save</button>
+      </div>
+    </form>
+
+    <form class="vpn-upload mt-3" data-provider="{{ p }}" enctype="multipart/form-data">
+      <label class="dropzone">
+        ⬆ Upload .ovpn / .conf
+        <input type="file" name="file" accept=".ovpn,.conf" hidden>
+      </label>
+    </form>
+    <p class="vpn-result text-xs text-muted mt-3" style="margin:0;min-height:1em"></p>
+  </div>
+  {% endfor %}
+</div>
+
+<script>
+function setState(tile, ok, text){
+  const b = tile.querySelector('.vpn-state');
+  b.textContent = text; b.className = 'badge vpn-state ' + (ok ? 'ok' : 'danger');
+  if (ok) tile.classList.add('active');
+}
+document.querySelectorAll('.vpn-creds').forEach(form => form.addEventListener('submit', async e => {
+  e.preventDefault();
+  const tile = form.closest('.tile');
+  const r = await fetch(`/api/vpn/${form.dataset.provider}/credentials`, {method:'POST', body:new FormData(form), headers: csrfHeaders()});
+  const d = await r.json();
+  tile.querySelector('.vpn-result').textContent = d.ok ? '✓ credentials saved' : '✗ ' + (d.error || d.stderr || '');
+  if (d.ok) setState(tile, true, 'configured');
+  window.toast(form.dataset.provider + (d.ok ? ' credentials saved' : ' failed'), d.ok ? 'ok' : 'danger');
+}));
+document.querySelectorAll('.vpn-upload input[type=file]').forEach(inp => inp.addEventListener('change', async e => {
+  const form = inp.closest('form'); const tile = form.closest('.tile');
+  const r = await fetch(`/api/vpn/${form.dataset.provider}/upload`, {method:'POST', body:new FormData(form), headers: csrfHeaders()});
+  const d = await r.json();
+  tile.querySelector('.vpn-result').textContent = d.ok ? `✓ ${d.filename} uploaded` : '✗ ' + (d.error || d.stderr || '');
+  if (d.ok) setState(tile, true, 'config added');
+  window.toast(form.dataset.provider + (d.ok ? ' file uploaded' : ' upload failed'), d.ok ? 'ok' : 'danger');
+}));
+</script>
+{% endblock %}

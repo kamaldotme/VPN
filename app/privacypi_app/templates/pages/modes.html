@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block heading %}Routing Mode{% endblock %}
+{% block subheading %}Atomic kernel-level switching with kill-switch protection.{% endblock %}
+{% block content %}
+
+<div class="mode-grid">
+  <button class="mode-tile" data-mode="direct">
+    <div class="mode-tile-icon">🌐</div>
+    <div class="mode-tile-name">Direct</div>
+    <div class="mode-tile-desc">Raw internet, no privacy</div>
+  </button>
+  <button class="mode-tile" data-mode="openvpn">
+    <div class="mode-tile-icon">🔐</div>
+    <div class="mode-tile-name">OpenVPN</div>
+    <div class="mode-tile-desc">Active OpenVPN tunnel</div>
+  </button>
+  <button class="mode-tile" data-mode="wireguard">
+    <div class="mode-tile-icon">⚡</div>
+    <div class="mode-tile-name">WireGuard</div>
+    <div class="mode-tile-desc">Fast modern VPN</div>
+  </button>
+  <button class="mode-tile" data-mode="tor">
+    <div class="mode-tile-icon">🧅</div>
+    <div class="mode-tile-name">Tor</div>
+    <div class="mode-tile-desc">Maximum anonymity</div>
+  </button>
+  <button class="mode-tile" data-mode="proxy">
+    <div class="mode-tile-icon">🥷</div>
+    <div class="mode-tile-name">Proxy</div>
+    <div class="mode-tile-desc">Censorship bypass (SS/V2Ray/Trojan/Hysteria2)</div>
+  </button>
+  <button class="mode-tile" data-mode="killswitch">
+    <div class="mode-tile-icon">🛑</div>
+    <div class="mode-tile-name">Kill switch</div>
+    <div class="mode-tile-desc">Block all traffic</div>
+  </button>
+</div>
+
+<div class="card mt-4" id="result-card" style="display:none">
+  <p class="card-title">Result</p>
+  <pre id="result-pre" class="text-xs" style="margin:0;max-height:160px;overflow:auto"></pre>
+</div>
+
+<script>
+async function fetchStatus() {
+  try {
+    const r = await fetch('/api/status');
+    const d = await r.json();
+    document.querySelectorAll('.mode-tile').forEach(t => {
+      t.classList.toggle('active', t.dataset.mode === d.mode);
+    });
+  } catch(e) {}
+}
+fetchStatus();
+
+document.querySelectorAll('.mode-tile').forEach(btn => {
+  btn.addEventListener('click', async () => {
+    btn.style.opacity = '0.6';
+    const r = await fetch(`/api/mode/${btn.dataset.mode}`, {method: 'POST', headers: csrfHeaders()});
+    const d = await r.json();
+    btn.style.opacity = '1';
+    if (d.ok) {
+      window.toast(`Switched to ${btn.dataset.mode}`, 'ok');
+      fetchStatus();
+    } else {
+      window.toast('Switch failed: ' + (d.stderr || d.error || 'unknown'), 'danger');
+    }
+    document.getElementById('result-card').style.display = 'block';
+    document.getElementById('result-pre').textContent = (d.stdout || '') + (d.stderr || '');
+  });
+});
+</script>
+{% endblock %}

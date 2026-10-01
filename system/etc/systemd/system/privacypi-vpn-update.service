@@ -1,0 +1,7 @@
+[Unit]
+Description=PrivacyPi VPN provider server list update
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/privacypi/scripts/vpn-server-update.sh

@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block heading %}DNS Settings{% endblock %}
+{% block subheading %}AdGuard Home → Unbound recursive → encrypted upstream. 891k filter rules.{% endblock %}
+{% block content %}
+
+<div class="card mb-4">
+  <p class="card-title">Filtering profile</p>
+  <p class="text-sm text-muted">Currently: <strong class="text-accent" id="current">{{ current }}</strong></p>
+  <div class="flex gap-2 mt-3" style="flex-wrap:wrap">
+    {% for p in profiles %}
+    <button class="btn btn-sm dns-prof" data-profile="{{ p }}">{{ p }}</button>
+    {% endfor %}
+  </div>
+</div>
+
+<div class="card">
+  <p class="card-title">AdGuard Home dashboard</p>
+  <p class="text-sm text-muted">Per-client filtering, DNS upstream choice (DoH/DoT/DoQ), live query log.</p>
+  <a class="btn btn-primary mt-3" href="http://{{ lan_gw }}:3000" target="_blank">Open AdGuard →</a>
+</div>
+
+<script>
+document.querySelectorAll('.dns-prof').forEach(b => b.addEventListener('click', async () => {
+  const fd = new FormData(); fd.append('profile', b.dataset.profile);
+  const r = await fetch('/api/dns/profile', {method:'POST', body:fd, headers: csrfHeaders()});
+  const d = await r.json();
+  if (d.ok) {
+    document.getElementById('current').textContent = d.profile;
+    window.toast('DNS profile: ' + d.profile, 'ok');
+  } else { window.toast('Failed: ' + d.error, 'danger'); }
+}));
+</script>
+{% endblock %}

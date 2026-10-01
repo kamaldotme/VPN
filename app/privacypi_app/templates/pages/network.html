@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% block heading %}Internet connection{% endblock %}
+{% block subheading %}Choose how PrivacyPi reaches the internet — a wired cable or a nearby WiFi network.{% endblock %}
+{% block content %}
+
+<div class="card mb-4">
+  <p class="card-title">Current connection</p>
+  <div id="wan-status" class="text-sm text-muted mt-2">Loading…</div>
+</div>
+
+<div class="card mb-4">
+  <p class="card-title">🔌 Wired (Ethernet)</p>
+  <p class="text-sm text-muted">Plug a network cable into the Pi. Most reliable — pick this at home.</p>
+  <button id="btn-eth" class="btn btn-primary mt-3">Use Ethernet</button>
+</div>
+
+<div class="card">
+  <p class="card-title">📶 WiFi network</p>
+  <p class="text-sm text-muted">
+    Connect the Pi's built-in WiFi to a home router or a phone hotspot. Useful when there's no cable.
+    If the password is wrong or it can't connect, PrivacyPi automatically switches back to Ethernet — you won't get locked out of this dashboard.
+  </p>
+
+  <div class="flex gap-2 mt-3" style="flex-wrap:wrap; align-items:flex-end">
+    <div style="flex:1; min-width:200px">
+      <label class="text-sm text-muted">Network name (SSID)</label>
+      <input id="ssid" autocomplete="off" placeholder="e.g. MyHomeWiFi" maxlength="32">
+    </div>
+    <button id="btn-scan" class="btn btn-sm">Scan</button>
+  </div>
+  <div id="scan-list" class="flex gap-2 mt-2" style="flex-wrap:wrap"></div>
+
+  <div class="mt-3" style="max-width:320px">
+    <label class="text-sm text-muted">Password</label>
+    <input id="psk" type="password" autocomplete="off" placeholder="WiFi password" maxlength="63">
+  </div>
+
+  <button id="btn-wifi" class="btn btn-primary mt-3">Connect to WiFi</button>
+  <p id="wifi-note" class="text-sm text-muted mt-2"></p>
+</div>
+
+<script>
+function renderStatus(d) {
+  const el = document.getElementById('wan-status');
+  if (!d || d.ok === false) { el.textContent = (d && d.error) || 'Unavailable'; return; }
+  const wired = d.wan_mode === 'ethernet';
+  const badge = wired
+    ? '<span class="text-accent">🔌 Ethernet</span>'
+    : '<span class="text-accent">📶 WiFi' + (d.wifi_ssid ? ' — ' + d.wifi_ssid : '') + '</span>';
+  el.innerHTML =
+    'Mode: <strong>' + badge + '</strong><br>' +
+    'Interface: <code>' + (d.wan_iface || '?') + '</code> &nbsp; ' +
+    'IP: <code>' + (d.ip || '—') + '</code> &nbsp; ' +
+    'Gateway: <code>' + (d.gw || '—') + '</code>';
+}
+
+async function refresh() {
+  try { const r = await fetch('/api/wan/status'); renderStatus(await r.json()); }
+  catch (e) { /* ignore transient errors during a switch */ }
+}
+
+document.getElementById('btn-scan').addEventListener('click', async () => {
+  const list = document.getElementById('scan-list');
+  list.innerHTML = '<span class="text-sm text-muted">Scanning…</span>';
+  try {
+    const r = await fetch('/api/wan/scan');
+    const d = await r.json();
+    if (!d.ok || !d.networks || !d.networks.length) { list.innerHTML = '<span class="text-sm text-muted">No networks found.</span>'; return; }
+    list.innerHTML = '';
+    d.networks.forEach(n => {
+      const b = document.createElement('button');
+      b.className = 'btn btn-sm';
+      const lock = n.security && n.security !== 'open' ? '🔒 ' : '';
+      b.textContent = lock + n.ssid;
+      b.addEventListener('click', () => { document.getElementById('ssid').value = n.ssid; document.getElementById('psk').focus(); });
+      list.appendChild(b);
+    });
+  } catch (e) { list.innerHTML = '<span class="text-sm text-muted">Scan failed.</span>'; }
+});
+
+document.getElementById('btn-eth').addEventListener('click', async () => {
+  const btn = document.getElementById('btn-eth'); btn.disabled = true;
+  window.toast('Switching to Ethernet…', 'ok');
+  try {
+    const r = await fetch('/api/wan/ethernet', {method:'POST', headers: csrfHeaders()});
+    const d = await r.json();
+    window.toast(d.ok ? 'Now using Ethernet' : ('Failed: ' + d.error), d.ok ? 'ok' : 'danger');
+  } catch (e) { window.toast('Request failed', 'danger'); }
+  btn.disabled = false; refresh();
+});
+
+document.getElementById('btn-wifi').addEventListener('click', async () => {
+  const ssid = document.getElementById('ssid').value.trim();
+  const psk = document.getElementById('psk').value;
+  if (!ssid) { window.toast('Enter a network name', 'danger'); return; }
+  if (psk.length < 8 || psk.length > 63) { window.toast('Password must be 8–63 characters', 'danger'); return; }
+  const btn = document.getElementById('btn-wifi'); btn.disabled = true;
+  document.getElementById('wifi-note').textContent = 'Connecting and verifying… this can take ~25 seconds.';
+  const fd = new FormData(); fd.append('ssid', ssid); fd.append('psk', psk);
+  try {
+    const r = await fetch('/api/wan/wifi', {method:'POST', body: fd, headers: csrfHeaders()});
+    const d = await r.json();
+    if (d.ok) { window.toast('Connected to ' + ssid, 'ok'); document.getElementById('wifi-note').textContent = ''; }
+    else { window.toast(d.error || 'Could not connect', 'danger'); document.getElementById('wifi-note').textContent = d.error || ''; }
+  } catch (e) { window.toast('Request failed', 'danger'); }
+  document.getElementById('psk').value = '';
+  btn.disabled = false; refresh();
+});
+
+refresh();
+setInterval(refresh, 8000);
+</script>
+{% endblock %}

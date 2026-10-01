@@ -1,0 +1,43 @@
+# PrivacyPi site-specific configuration.
+# install.sh writes this from probed values; edit only if defaults are wrong.
+#
+# After editing: sudo systemctl restart caddy privacypi-flask hostapd
+
+# --- WAN (how the Pi reaches the internet) ----------------------------------
+# WAN_MODE: ethernet (wired ETH_IFACE) or wifi (WIFI_WAN_IFACE as a client).
+# Change this from the admin UI (Network page) — it is rewritten by wan-config.sh.
+WAN_MODE=ethernet
+ETH_IFACE=eth0          # wired uplink (probed by install.sh)
+WIFI_WAN_IFACE=wlan0    # built-in radio used as a WiFi client when WAN_MODE=wifi
+WAN_WIFI_SSID=          # upstream SSID when WAN_MODE=wifi (PSK lives in wpa_supplicant, not here)
+# WAN_IFACE is normally derived from WAN_MODE; set it only to force a specific
+# interface. Leave commented to let lib/site.sh pick ETH_IFACE / WIFI_WAN_IFACE.
+#WAN_IFACE=eth0
+
+# AP interface — the radio that client devices connect to (Edimax USB)
+AP_IFACE=wlan1
+
+# LAN bridge subnet (devices joining the WiFi)
+LAN_BRIDGE=br-vlan10
+LAN_NET=10.10.10.0/24
+LAN_GW=10.10.10.1
+
+# WireGuard travel-server subnet
+WG_NET=10.20.0.0/24
+WG_GW=10.20.0.1
+WG_PORT=51820
+
+# Public-facing names — what clients use to reach the dashboard.
+# Both are added as SANs on the internal-CA cert.
+HOST_MDNS=privacypi.local
+HOST_IP=                    # filled by install.sh from $WAN_IFACE
+
+# Tor port assignments (defaults are fine; change only if conflicts)
+TOR_TRANS_PORT=9040
+TOR_DNS_PORT=5353
+TOR_CONTROL_PORT=9051
+TOR_SOCKS_PORT=9050
+
+# DoH-bypass list — IPs to FORWARD-reject so apps using these are forced
+# to fall through to plain DNS (which we capture via :53 redirect).
+DOH_BYPASS_IPS="1.1.1.1 1.0.0.1 8.8.8.8 8.8.4.4 9.9.9.9 149.112.112.112 208.67.222.222 208.67.220.220 94.140.14.14 94.140.15.15"

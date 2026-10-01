@@ -1,0 +1,251 @@
+{% extends "base.html" %}
+{% block heading %}Advanced (Tier B){% endblock %}
+{% block subheading %}Onion-SSH, wstunnel WG-DPI, Tor circuits, per-domain routing, WebAuthn, lockouts.{% endblock %}
+{% block content %}
+
+<!-- Onion SSH -->
+<div class="card mb-4">
+  <p class="card-title">🧅 Onion service for SSH</p>
+  <p class="text-sm text-muted mb-3">
+    Reach the Pi's shell via <code>.onion</code> — no inbound ports on WAN.
+    Use:&nbsp;<code>torsocks ssh privacypi@&lt;onion&gt;</code>
+  </p>
+  <p class="text-xs" id="oss-state" style="font-family:'JetBrains Mono',monospace">…</p>
+  <div class="flex gap-2 mt-2">
+    <button class="btn btn-primary" data-act="enable" data-grp="oss">Enable</button>
+    <button class="btn" data-act="disable" data-grp="oss">Disable</button>
+  </div>
+</div>
+
+<!-- wstunnel -->
+<div class="card mb-4">
+  <p class="card-title">🛰️ WireGuard DPI obfuscation (wstunnel)</p>
+  <p class="text-sm text-muted mb-3">
+    Wraps WireGuard inside WebSocket-over-HTTPS. To a censor's DPI it looks
+    like vanilla TLS to port 8444. Useful in restrictive networks.
+  </p>
+  <p class="text-xs" id="wst-state" style="font-family:'JetBrains Mono',monospace">…</p>
+  <div class="flex gap-2 mt-2">
+    <button class="btn" data-act="install" data-grp="wst">Install</button>
+    <button class="btn btn-primary" data-act="enable" data-grp="wst">Enable</button>
+    <button class="btn" data-act="disable" data-grp="wst">Disable</button>
+  </div>
+</div>
+
+<!-- Tor circuits -->
+<div class="card mb-4">
+  <p class="card-title">🔄 Tor circuits</p>
+  <p class="text-sm text-muted mb-3">Live view of your active Tor circuits and the path each takes.</p>
+  <div id="circ-list"><span class="text-xs text-muted">loading…</span></div>
+  <button class="btn mt-2" id="circ-refresh">Refresh</button>
+</div>
+
+<!-- Per-domain routing -->
+<div class="card mb-4">
+  <p class="card-title">🗺️ Per-domain split routing</p>
+  <p class="text-sm text-muted mb-3">
+    Route specific domains via <code>tor</code> / <code>vpn</code> / <code>proxy</code>
+    regardless of the device's global mode. Resolved IPs are added to ipsets by a
+    daemon that watches AdGuard's query log.
+  </p>
+  <form id="dr-form" class="flex gap-2 mb-3">
+    <input id="dr-domain" placeholder="example.com (or *.example.com)" style="flex:1">
+    <select id="dr-mode">
+      <option value="tor">tor</option><option value="vpn">vpn</option>
+      <option value="proxy">proxy</option><option value="direct">direct</option>
+      <option value="killswitch">killswitch</option>
+    </select>
+    <button class="btn btn-primary" type="submit">Add</button>
+  </form>
+  <table style="width:100%"><thead>
+    <tr style="text-align:left;color:#888;font-size:12px">
+      <th>Domain</th><th>Mode</th><th></th>
+    </tr></thead><tbody id="dr-tbody"></tbody></table>
+</div>
+
+<!-- WebAuthn -->
+<div class="card mb-4">
+  <p class="card-title">🔑 Hardware key (WebAuthn / passkey)</p>
+  <p class="text-sm text-muted mb-3">
+    Register a YubiKey, Titan key, or platform passkey as an additional 2FA option.
+  </p>
+  <ul id="wa-list" class="text-sm" style="margin:0 0 12px 0;padding-left:18px"></ul>
+  <form id="wa-form" class="flex gap-2">
+    <input id="wa-label" placeholder="label (e.g. yubikey-blue)" style="flex:1" maxlength="64">
+    <button class="btn btn-primary" type="submit">Register new key</button>
+  </form>
+</div>
+
+<!-- Lockouts -->
+<div class="card">
+  <p class="card-title">🚫 Login lockout (5 fails / 15 min)</p>
+  <table style="width:100%"><thead>
+    <tr style="text-align:left;color:#888;font-size:12px">
+      <th>IP</th><th>Fails</th><th>Last</th><th></th>
+    </tr></thead><tbody id="lo-tbody"></tbody></table>
+  <button class="btn mt-2" id="lo-clear-all">Clear all</button>
+</div>
+
+<script>
+function el(t,a,x){const e=document.createElement(t);if(a)for(const k in a)e[k]=a[k];if(x!=null)e.textContent=x;return e;}
+
+// generic enable/disable groups
+async function refreshState(grp, api) {
+  const r = await fetch('/api/' + api); const d = await r.json();
+  document.getElementById(grp + '-state').textContent = JSON.stringify(d);
+}
+document.querySelectorAll('button[data-grp]').forEach(b => b.addEventListener('click', async () => {
+  const grp = b.getAttribute('data-grp');
+  const act = b.getAttribute('data-act');
+  const apiName = grp === 'oss' ? 'onion-ssh' : grp === 'wst' ? 'wstunnel' : null;
+  if (!apiName) return;
+  b.disabled = true; const orig = b.textContent; b.textContent = '…';
+  const r = await fetch('/api/' + apiName + '/' + act, {method: 'POST', headers: csrfHeaders()});
+  const d = await r.json();
+  window.toast(d.ok !== false ? (apiName + ' ' + act + ' ok') : ('fail: ' + (d.error||'')),
+    d.ok !== false ? 'ok' : 'danger');
+  b.disabled = false; b.textContent = orig;
+  refreshState(grp, apiName);
+}));
+refreshState('oss', 'onion-ssh');
+refreshState('wst', 'wstunnel');
+
+// Tor circuits
+async function loadCircuits() {
+  const r = await fetch('/api/tor/circuits'); const d = await r.json();
+  const wrap = document.getElementById('circ-list');
+  wrap.replaceChildren();
+  if (!d.circuits || d.circuits.length === 0) {
+    wrap.appendChild(el('span', {className:'text-xs text-muted'}, 'No active circuits.'));
+    return;
+  }
+  for (const c of d.circuits) {
+    const row = el('div', {style: 'padding:6px 0;border-bottom:1px solid #1a1a1a;font-family:\'JetBrains Mono\',monospace;font-size:11px'});
+    row.appendChild(el('span', {style:'color:var(--accent);width:60px;display:inline-block'}, '#'+c.id));
+    row.appendChild(el('span', {style:'color:#999;margin-right:12px'}, c.purpose||'GENERAL'));
+    const path = c.hops.map(h => h.nickname || h.fp.slice(0,8)).join(' → ');
+    row.appendChild(el('span', {style:'color:#fff'}, path));
+    wrap.appendChild(row);
+  }
+}
+document.getElementById('circ-refresh').addEventListener('click', loadCircuits);
+loadCircuits();
+
+// Domain routes
+async function loadRoutes() {
+  const r = await fetch('/api/domain-routes'); const d = await r.json();
+  const tb = document.getElementById('dr-tbody'); tb.replaceChildren();
+  for (const x of d.routes) {
+    const tr = el('tr');
+    tr.appendChild(el('td', {style:'padding:6px 0;font-family:\'JetBrains Mono\',monospace'}, x.domain));
+    tr.appendChild(el('td', null, x.mode));
+    const td = el('td', {style:'text-align:right'});
+    const btn = el('button', {className:'btn btn-sm', 'data-id': x.id}, 'delete');
+    btn.dataset.id = x.id;
+    btn.addEventListener('click', async () => {
+      const r = await fetch('/api/domain-routes/' + x.id, {method:'DELETE', headers: csrfHeaders()});
+      const d = await r.json();
+      window.toast(d.ok ? 'deleted' : 'fail', d.ok ? 'ok' : 'danger');
+      loadRoutes();
+    });
+    td.appendChild(btn); tr.appendChild(td);
+    tb.appendChild(tr);
+  }
+}
+document.getElementById('dr-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const fd = new FormData();
+  fd.append('domain', document.getElementById('dr-domain').value.trim());
+  fd.append('mode', document.getElementById('dr-mode').value);
+  const r = await fetch('/api/domain-routes', {method:'POST', body:fd, headers: csrfHeaders()});
+  const d = await r.json();
+  window.toast(d.ok ? 'added' : ('fail: ' + (d.error||'')), d.ok ? 'ok' : 'danger');
+  if (d.ok) { document.getElementById('dr-domain').value = ''; loadRoutes(); }
+});
+loadRoutes();
+
+// WebAuthn
+function b64urlToBuf(s){s=s.replace(/-/g,'+').replace(/_/g,'/');while(s.length%4)s+='=';
+  return Uint8Array.from(atob(s),c=>c.charCodeAt(0)).buffer;}
+function bufToB64url(buf){return btoa(String.fromCharCode(...new Uint8Array(buf)))
+  .replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');}
+async function loadWA() {
+  const r = await fetch('/api/webauthn/credentials'); const d = await r.json();
+  const ul = document.getElementById('wa-list'); ul.replaceChildren();
+  for (const c of d.credentials) {
+    const li = el('li');
+    li.appendChild(el('span', null, (c.label || 'unlabelled') + ' — ' + c.created_at.slice(0,10) + ' '));
+    const del = el('button', {className:'btn btn-sm'}, 'delete');
+    del.addEventListener('click', async () => {
+      const r = await fetch('/api/webauthn/credentials/' + c.id, {method:'DELETE', headers: csrfHeaders()});
+      if ((await r.json()).ok) loadWA();
+    });
+    li.appendChild(del); ul.appendChild(li);
+  }
+  if (d.credentials.length === 0) ul.appendChild(el('li', {className:'text-muted'}, 'No keys registered yet.'));
+}
+document.getElementById('wa-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const label = document.getElementById('wa-label').value.trim() || 'hardware key';
+  const r1 = await fetch('/api/webauthn/register/begin', {method:'POST', headers: csrfHeaders()});
+  const opts = (await r1.json()).options;
+  // Convert from JSON to ArrayBuffers
+  opts.challenge = b64urlToBuf(opts.challenge);
+  opts.user.id = b64urlToBuf(opts.user.id);
+  if (opts.excludeCredentials) opts.excludeCredentials.forEach(c => c.id = b64urlToBuf(c.id));
+  let cred;
+  try {
+    cred = await navigator.credentials.create({publicKey: opts});
+  } catch (err) { window.toast('Cancelled / failed: ' + err, 'danger'); return; }
+  const att = cred.response;
+  const payload = {
+    label,
+    response: {
+      id: cred.id, rawId: bufToB64url(cred.rawId), type: cred.type,
+      response: {
+        clientDataJSON: bufToB64url(att.clientDataJSON),
+        attestationObject: bufToB64url(att.attestationObject),
+      },
+    },
+  };
+  const r2 = await fetch('/api/webauthn/register/finish', {
+    method:'POST', headers: {...csrfHeaders(), 'Content-Type':'application/json'},
+    body: JSON.stringify(payload),
+  });
+  const d = await r2.json();
+  window.toast(d.ok ? 'Key registered' : ('Fail: ' + (d.error||'')), d.ok ? 'ok' : 'danger');
+  if (d.ok) { document.getElementById('wa-label').value = ''; loadWA(); }
+});
+loadWA();
+
+// Lockouts
+async function loadLockouts() {
+  const r = await fetch('/api/lockout'); const d = await r.json();
+  const tb = document.getElementById('lo-tbody'); tb.replaceChildren();
+  const all = (d.all_recent || []);
+  if (all.length === 0) { tb.appendChild(el('tr')).appendChild(el('td', {colSpan:4, className:'text-xs text-muted'}, 'No recent failures.')); return; }
+  for (const x of all) {
+    const isLocked = x.fails >= 5;
+    const tr = el('tr');
+    tr.appendChild(el('td', {style:'padding:6px 0;font-family:\'JetBrains Mono\',monospace'}, x.ip));
+    tr.appendChild(el('td', {style: isLocked ? 'color:var(--danger,#f87171)' : ''}, x.fails + (isLocked ? ' 🔒' : '')));
+    tr.appendChild(el('td', null, x.last.slice(11,19)));
+    const td = el('td', {style:'text-align:right'});
+    const btn = el('button', {className:'btn btn-sm'}, 'clear');
+    btn.addEventListener('click', async () => {
+      const fd = new FormData(); fd.append('ip', x.ip);
+      const r = await fetch('/api/lockout/clear', {method:'POST', body:fd, headers: csrfHeaders()});
+      if ((await r.json()).ok) loadLockouts();
+    });
+    td.appendChild(btn); tr.appendChild(td);
+    tb.appendChild(tr);
+  }
+}
+document.getElementById('lo-clear-all').addEventListener('click', async () => {
+  if (!confirm('Clear all login-attempt history?')) return;
+  await fetch('/api/lockout/clear', {method:'POST', body:new FormData(), headers: csrfHeaders()});
+  loadLockouts();
+});
+loadLockouts();
+</script>
+{% endblock %}

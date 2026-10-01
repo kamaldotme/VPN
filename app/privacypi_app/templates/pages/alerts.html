@@ -1,0 +1,153 @@
+{% extends "base.html" %}
+{% block heading %}Alerts{% endblock %}
+{% block subheading %}Send notifications via Telegram, Discord, email, ntfy.sh, etc. when something happens.{% endblock %}
+{% block content %}
+
+<div class="card mb-4">
+  <p class="card-title">Add notification channel</p>
+  <form id="alert-form">
+    <div class="grid grid-2">
+      <div class="field"><label>Label</label><input name="label" placeholder="My Telegram" required></div>
+      <div class="field"><label>Apprise URL</label>
+        <input name="url" placeholder="tgram://botToken/chatId" required>
+      </div>
+    </div>
+    <div class="field">
+      <label>Triggers</label>
+      <div class="flex gap-2" style="flex-wrap:wrap">
+        {% for t in valid_triggers %}
+        <label class="badge" style="cursor:pointer;font-weight:400">
+          <input type="checkbox" name="triggers" value="{{ t }}" style="margin-right:6px;width:auto"> {{ t }}
+        </label>
+        {% endfor %}
+      </div>
+    </div>
+    <button class="btn btn-primary">Add channel</button>
+  </form>
+  <p class="text-xs text-muted mt-3">
+    URL formats: <code>tgram://TOKEN/CHAT_ID</code> ·
+    <code>discord://WEBHOOK_ID/WEBHOOK_TOKEN</code> ·
+    <code>ntfy://TOPIC</code> ·
+    <code>mailto://user:pw@gmail.com?to=you@x.com</code> ·
+    <a href="https://github.com/caronc/apprise/wiki" target="_blank" class="text-accent">full list</a>
+  </p>
+</div>
+
+<div class="card">
+  <p class="card-title">Configured channels</p>
+  {% if configs %}
+  <table>
+    <thead><tr><th>Label</th><th>URL</th><th>Triggers</th><th></th></tr></thead>
+    <tbody>
+    {% for c in configs %}
+    <tr>
+      <td>{{ c.label }}</td>
+      <td><code class="text-xs">{{ c.url[:40] }}{% if c.url|length > 40 %}…{% endif %}</code></td>
+      <td><span class="text-xs text-muted">{{ c.triggers }}</span></td>
+      <td>
+        <button class="btn btn-sm test-alert" data-id="{{ c.id }}">Test</button>
+        <button class="btn btn-sm btn-danger del-alert" data-id="{{ c.id }}">Delete</button>
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="text-muted text-sm">No channels yet. Add one above.</p>
+  {% endif %}
+</div>
+
+<div class="card mt-4">
+  <p class="card-title">🔔 Alert rules</p>
+  <p class="text-sm text-muted mb-3">
+    Rules evaluated every 60s. When a rule fires, all enabled channels above receive
+    the alert. Cooldown prevents spam.
+  </p>
+  <form id="rule-form" class="flex gap-2 mb-3" style="flex-wrap:wrap">
+    <input id="r-label" placeholder="rule label" maxlength="64" style="flex:1;min-width:140px">
+    <select id="r-kind" style="min-width:140px">
+      <option value="audit.action">audit.action</option>
+      <option value="dns.host">dns.host</option>
+      <option value="dns.client_blocked">dns.client_blocked</option>
+      <option value="threshold.fails">threshold.fails</option>
+    </select>
+    <input id="r-pattern" placeholder="pattern (e.g. mode.killswitch%, *.malware.tld, 10.10.10.42)" style="flex:2;min-width:200px">
+    <input id="r-threshold" placeholder="threshold" type="number" min="1" value="1" style="width:90px">
+    <input id="r-window" placeholder="window min" type="number" min="1" value="60" style="width:90px">
+    <input id="r-cooldown" placeholder="cooldown min" type="number" min="0" value="60" style="width:90px">
+    <button class="btn btn-primary" type="submit">Add rule</button>
+  </form>
+  <table style="width:100%;font-size:13px"><thead>
+    <tr style="text-align:left;color:#888;font-size:12px">
+      <th>Label</th><th>Kind</th><th>Pattern</th><th>Thr.</th><th>Win.</th><th>CD</th><th>Last fire</th><th></th>
+    </tr></thead><tbody id="rules-body"></tbody></table>
+</div>
+
+<script>
+function elx(t,a,x){const e=document.createElement(t);if(a)for(const k in a)e[k]=a[k];if(x!=null)e.textContent=x;return e;}
+async function loadRules() {
+  const r = await fetch('/api/alert-rules'); const d = await r.json();
+  const tb = document.getElementById('rules-body'); tb.replaceChildren();
+  for (const x of d.rules) {
+    const tr = elx('tr');
+    tr.appendChild(elx('td', null, x.label));
+    tr.appendChild(elx('td', {style:'font-family:\'JetBrains Mono\',monospace;font-size:11px'}, x.kind));
+    tr.appendChild(elx('td', {style:'font-family:\'JetBrains Mono\',monospace;font-size:11px'}, x.pattern));
+    tr.appendChild(elx('td', null, x.threshold));
+    tr.appendChild(elx('td', null, x.window_minutes + 'm'));
+    tr.appendChild(elx('td', null, x.cooldown_minutes + 'm'));
+    tr.appendChild(elx('td', {style:'font-size:11px;color:#888'}, x.last_fired_at ? x.last_fired_at.slice(0,16) : '—'));
+    const td = elx('td', {style:'text-align:right'});
+    const tog = elx('button', {className:'btn btn-sm'}, x.enabled ? 'on' : 'off');
+    tog.addEventListener('click', async () => {
+      await fetch('/api/alert-rules/' + x.id + '/toggle', {method:'POST', headers: csrfHeaders()});
+      loadRules();
+    });
+    const del = elx('button', {className:'btn btn-sm'}, 'del');
+    del.addEventListener('click', async () => {
+      if (!confirm('Delete rule ' + x.label + '?')) return;
+      await fetch('/api/alert-rules/' + x.id, {method:'DELETE', headers: csrfHeaders()});
+      loadRules();
+    });
+    td.appendChild(tog); td.appendChild(document.createTextNode(' ')); td.appendChild(del);
+    tr.appendChild(td);
+    tb.appendChild(tr);
+  }
+}
+document.getElementById('rule-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const fd = new FormData();
+  fd.append('label', document.getElementById('r-label').value.trim());
+  fd.append('kind', document.getElementById('r-kind').value);
+  fd.append('pattern', document.getElementById('r-pattern').value.trim());
+  fd.append('threshold', document.getElementById('r-threshold').value);
+  fd.append('window_minutes', document.getElementById('r-window').value);
+  fd.append('cooldown_minutes', document.getElementById('r-cooldown').value);
+  const r = await fetch('/api/alert-rules', {method:'POST', body:fd, headers: csrfHeaders()});
+  const d = await r.json();
+  window.toast(d.ok ? 'rule added' : ('fail: ' + (d.error||'')), d.ok ? 'ok' : 'danger');
+  if (d.ok) { ['r-label','r-pattern'].forEach(i=>document.getElementById(i).value=''); loadRules(); }
+});
+loadRules();
+
+document.getElementById('alert-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const fd = new FormData(e.target);
+  const r = await fetch('/api/alerts', {method:'POST', body:fd, headers: csrfHeaders()});
+  const d = await r.json();
+  if (d.ok) { window.toast('Channel added', 'ok'); setTimeout(()=>location.reload(), 600); }
+  else window.toast('Failed: ' + (d.error || 'unknown'), 'danger');
+});
+document.querySelectorAll('.test-alert').forEach(b => b.addEventListener('click', async () => {
+  const r = await fetch(`/api/alerts/${b.dataset.id}/test`, {method:'POST', headers: csrfHeaders()});
+  const d = await r.json();
+  window.toast(d.ok ? 'Test sent' : 'Test failed', d.ok ? 'ok' : 'danger');
+}));
+document.querySelectorAll('.del-alert').forEach(b => b.addEventListener('click', async () => {
+  if (!confirm('Delete this channel?')) return;
+  const r = await fetch(`/api/alerts/${b.dataset.id}/delete`, {method:'POST', headers: csrfHeaders()});
+  const d = await r.json();
+  if (d.ok) location.reload();
+}));
+</script>
+{% endblock %}

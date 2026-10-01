@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% block heading %}WireGuard Server{% endblock %}
+{% block subheading %}Connect your phone or laptop to this Pi from anywhere in the world. Use your privacy stack while traveling.{% endblock %}
+{% block content %}
+
+<div class="card mb-4">
+  <div class="flex-between">
+    <div>
+      <p class="card-title">Server status</p>
+      <span class="badge {% if status.running %}ok{% endif %}" id="srv-status">{{ 'running' if status.running else 'stopped' }}</span>
+    </div>
+    <div class="flex gap-2">
+      {% if not status.running %}
+      <button class="btn" id="srv-init">Initialize</button>
+      <button class="btn btn-primary" id="srv-start">Start server</button>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<div class="card mb-4">
+  <p class="card-title">Add a peer</p>
+  <p class="text-sm text-muted mb-3">Each peer is one device (phone, laptop). Generate, scan QR with phone, done.</p>
+  <form id="peer-form">
+    <div class="flex gap-2">
+      <input name="name" placeholder="iphone, macbook, …" required style="flex:1">
+      <button class="btn btn-primary">Generate peer + QR</button>
+    </div>
+  </form>
+  <div id="qr-result" class="mt-4" style="display:none;text-align:center">
+    <img id="qr-img" style="background:white;padding:12px;border-radius:12px;width:280px;height:280px">
+    <p class="text-xs text-muted mt-3">Scan with the WireGuard app on your phone.</p>
+    <details>
+      <summary class="text-xs text-muted" style="cursor:pointer">Show config text</summary>
+      <pre id="qr-config" class="text-xs mt-2" style="text-align:left"></pre>
+    </details>
+  </div>
+</div>
+
+<div class="card">
+  <p class="card-title">Peers</p>
+  {% if peers %}
+  <table>
+    <thead><tr><th>Name</th><th></th></tr></thead>
+    <tbody>
+      {% for p in peers %}
+      <tr>
+        <td>{{ p }}</td>
+        <td>
+          <button class="btn btn-sm peer-qr" data-name="{{ p }}">Show QR</button>
+          <button class="btn btn-sm btn-danger peer-del" data-name="{{ p }}">Remove</button>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="text-muted text-sm">No peers yet.</p>
+  {% endif %}
+</div>
+
+<script>
+async function api(url, opts={}) {
+  const r = await fetch(url, {...opts, headers: {...csrfHeaders(), ...(opts.headers||{})}});
+  return r.json();
+}
+document.getElementById('srv-init')?.addEventListener('click', async () => {
+  const d = await api('/api/wg-server/init', {method:'POST'});
+  window.toast(d.ok ? 'Initialized' : 'Init failed', d.ok ? 'ok' : 'danger');
+  if (d.ok) location.reload();
+});
+document.getElementById('srv-start')?.addEventListener('click', async () => {
+  const d = await api('/api/wg-server/start', {method:'POST'});
+  window.toast(d.ok ? 'Server started' : 'Failed', d.ok ? 'ok' : 'danger');
+  if (d.ok) setTimeout(()=>location.reload(), 1000);
+});
+document.getElementById('peer-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const fd = new FormData(e.target);
+  const r = await fetch('/api/wg-server/peer', {method:'POST', body:fd, headers: csrfHeaders()});
+  const d = await r.json();
+  if (!d.ok) { window.toast('Failed: ' + (d.error||''), 'danger'); return; }
+  // Now fetch the QR
+  const qr = await fetch(`/api/wg-server/peer/${d.name}/qr`).then(r=>r.json());
+  if (qr.ok) {
+    document.getElementById('qr-img').src = 'data:image/png;base64,' + qr.qr_b64;
+    document.getElementById('qr-config').textContent = qr.config;
+    document.getElementById('qr-result').style.display = 'block';
+  }
+  window.toast(`Peer ${d.name} created`, 'ok');
+});
+document.querySelectorAll('.peer-qr').forEach(b => b.addEventListener('click', async () => {
+  const qr = await fetch(`/api/wg-server/peer/${b.dataset.name}/qr`).then(r=>r.json());
+  if (qr.ok) {
+    document.getElementById('qr-img').src = 'data:image/png;base64,' + qr.qr_b64;
+    document.getElementById('qr-config').textContent = qr.config;
+    document.getElementById('qr-result').style.display = 'block';
+    document.getElementById('qr-result').scrollIntoView({behavior:'smooth'});
+  }
+}));
+document.querySelectorAll('.peer-del').forEach(b => b.addEventListener('click', async () => {
+  if (!confirm(`Remove peer ${b.dataset.name}?`)) return;
+  await fetch(`/api/wg-server/peer/${b.dataset.name}/delete`, {method:'POST', headers: csrfHeaders()});
+  location.reload();
+}));
+</script>
+{% endblock %}

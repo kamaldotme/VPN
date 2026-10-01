@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Welcome, {{ user }}</h2>
+<p class="text-muted">PrivacyPi Flask backend is alive. Plans 8 + 9 will fill this dashboard.</p>
+<div id="status" class="mt-4"><pre id="json">loading…</pre></div>
+<script>
+  const es = new EventSource("/sse/status");
+  es.onmessage = e => document.getElementById("json").textContent = JSON.stringify(JSON.parse(e.data), null, 2);
+</script>
+{% endblock %}

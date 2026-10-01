@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block heading %}Privacy hardening{% endblock %}
+{% block subheading %}Containment toggles for DNS, NTP, AP, and captive-portal handling.{% endblock %}
+{% block content %}
+
+<div class="card mb-4">
+  <p class="card-title">🛡️ DNS containment</p>
+  <p class="text-sm text-muted mb-3">
+    Force every device on the LAN through AdGuard, no matter what resolver it hardcodes.
+    Redirects <code>:53</code> + <code>:853</code> at the firewall, blocks known DoH IPs
+    (Cloudflare, Google, Quad9, OpenDNS, AdGuard public, ControlD).
+  </p>
+  <p class="text-xs mb-3" style="font-family:'JetBrains Mono',monospace">
+    State: <span id="dnstrap-state">…</span>
+  </p>
+  <div class="flex gap-2">
+    <button class="btn btn-primary" data-trap="dns-trap" data-act="enable">Enable</button>
+    <button class="btn" data-trap="dns-trap" data-act="disable">Disable</button>
+  </div>
+</div>
+
+<div class="card mb-4">
+  <p class="card-title">⏱️ NTP containment</p>
+  <p class="text-sm text-muted mb-3">
+    Devices contacting <code>pool.ntp.org</code> leak their existence + activity pattern.
+    Run chrony locally and capture all <code>:123</code> traffic to it.
+  </p>
+  <p class="text-xs mb-3" style="font-family:'JetBrains Mono',monospace">
+    State: <span id="ntptrap-state">…</span>
+  </p>
+  <div class="flex gap-2">
+    <button class="btn btn-primary" data-trap="ntp-trap" data-act="enable">Enable</button>
+    <button class="btn" data-trap="ntp-trap" data-act="disable">Disable</button>
+  </div>
+</div>
+
+<div class="card mb-4">
+  <p class="card-title">📡 AP hardening (WPA3 / MFP / AP-isolation)</p>
+  <p class="text-sm text-muted mb-3">
+    Apply the strongest WiFi config your radio supports.
+    Always-on: <b>AP isolation</b> (clients can't see each other).
+    If your dongle supports it: <b>WPA3-SAE transition mode</b> +
+    <b>802.11w Management Frame Protection</b> (anti-deauth).
+  </p>
+  <p class="text-xs mb-3" style="font-family:'JetBrains Mono',monospace">
+    State: <span id="apharden-state">…</span>
+  </p>
+  <div class="flex gap-2">
+    <button class="btn" data-trap="ap-harden" data-act="probe">Probe radio capability</button>
+    <button class="btn btn-primary" data-trap="ap-harden" data-act="apply">Apply hardening</button>
+  </div>
+</div>
+
+<div class="card">
+  <p class="card-title">📶 Captive-portal handler</p>
+  <p class="text-sm text-muted mb-3">
+    When the Pi's upstream is a public hotspot (airport, coffee shop), kill-switch +
+    DNS containment will block the captive-portal login. Use bypass for 30 minutes
+    to authenticate, then it auto-restores.
+  </p>
+  <p class="text-xs mb-3" style="font-family:'JetBrains Mono',monospace">
+    State: <span id="captive-state">…</span>
+  </p>
+  <div class="flex gap-2">
+    <button class="btn" data-trap="captive-portal" data-act="check">Detect portal</button>
+    <button class="btn btn-primary" data-trap="captive-portal" data-act="bypass">Bypass 30 min</button>
+    <button class="btn" data-trap="captive-portal" data-act="restore">Restore now</button>
+  </div>
+</div>
+
+<script>
+async function loadState(api, slot) {
+  const r = await fetch('/api/' + api);
+  const d = await r.json();
+  document.getElementById(slot).textContent = JSON.stringify(d);
+}
+function refreshAll() {
+  loadState('dns-trap', 'dnstrap-state');
+  loadState('ntp-trap', 'ntptrap-state');
+  loadState('ap-harden', 'apharden-state');
+  loadState('captive-portal', 'captive-state');
+}
+document.querySelectorAll('button[data-trap]').forEach(b => b.addEventListener('click', async () => {
+  const api = b.getAttribute('data-trap');
+  const act = b.getAttribute('data-act');
+  b.disabled = true; b.textContent = '…';
+  const r = await fetch('/api/' + api + '/' + act, {method: 'POST', headers: csrfHeaders()});
+  const d = await r.json();
+  window.toast(d.ok !== false ? api + ': ' + act + ' ok' : (api + ' fail: ' + (d.error||'')),
+    d.ok !== false ? 'ok' : 'danger');
+  b.disabled = false; b.textContent = act === 'enable' ? 'Enable' :
+    act === 'disable' ? 'Disable' : act === 'apply' ? 'Apply hardening' :
+    act === 'probe' ? 'Probe radio capability' :
+    act === 'bypass' ? 'Bypass 30 min' : act === 'restore' ? 'Restore now' :
+    act === 'check' ? 'Detect portal' : act;
+  refreshAll();
+}));
+refreshAll();
+</script>
+{% endblock %}

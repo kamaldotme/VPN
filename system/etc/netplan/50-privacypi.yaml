@@ -1,0 +1,22 @@
+network:
+  version: 2
+  renderer: networkd
+  ethernets:
+    eth0:
+      dhcp4: true
+      optional: true
+      dhcp4-overrides:
+        # Wired WAN is the preferred uplink (lowest metric). PrivacyPi forces
+        # DNS to itself, so never accept the upstream's DNS servers.
+        route-metric: 50
+        use-dns: false
+  bridges:
+    br-vlan10:
+      addresses: [10.10.10.1/24]
+      parameters:
+        forward-delay: 0
+        stp: false
+# NOTE: the built-in WiFi radio (wlan0) used as a WAN client is NOT configured
+# here. It is managed out-of-band by wan-config.sh via a standalone
+# wpa_supplicant@wlan0.service + /etc/systemd/network/30-wlan0-wan.network, so a
+# WiFi-WAN change never triggers a `netplan apply` that could bounce the bridge.

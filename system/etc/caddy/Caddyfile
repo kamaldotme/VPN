@@ -1,0 +1,51 @@
+# PrivacyPi TLS frontend.
+#
+# Caddy listens on :443 (and redirects :80) and reverse-proxies to the
+# Flask gunicorn on 127.0.0.1:8443. Caddy's internal CA issues a single
+# certificate valid for both:
+#   - privacypi.local   (resolved via Avahi/mDNS on LAN)
+#   - 192.168.1.155     (direct IP fallback)
+#
+# Once you install Caddy's root CA on your devices, both paths work
+# without warnings forever. The root CA is exposed at:
+#   https://privacypi.local/pi-root.crt
+#   https://192.168.1.155/pi-root.crt
+#
+# To re-issue / re-trust:  rm -rf /var/lib/caddy/.local/share/caddy && systemctl restart caddy
+
+{
+	# Caddy auto-issues + auto-redirects HTTP→HTTPS by default.
+	log {
+		output file /var/log/caddy/caddy.log {
+			roll_size 10mb
+			roll_keep 5
+		}
+		level INFO
+	}
+}
+
+# Main HTTPS vhost: covers hostname + IP simultaneously.
+# Caddy pre-issues a single certificate with SANs for both names
+# from its built-in internal CA.
+privacypi.local, 192.168.1.155 {
+	tls internal
+
+	# One-click install of the Caddy root CA. Served from the well-known
+	# location Caddy publishes the trust anchor to.
+	@root path /pi-root.crt /pi-root.pem
+	handle @root {
+		root * /var/lib/caddy/.local/share/caddy/pki/authorities/local
+		try_files /root.crt =404
+		header Content-Type application/x-x509-ca-cert
+		header Content-Disposition "attachment; filename=privacypi-root.crt"
+		file_server
+	}
+
+	# Everything else → Flask
+	reverse_proxy 127.0.0.1:8443 {
+		header_up X-Forwarded-Proto https
+		header_up X-Forwarded-For {remote_host}
+	}
+
+	encode gzip zstd
+}

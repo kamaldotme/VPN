@@ -1,0 +1,180 @@
+{% extends "base.html" %}
+{% block heading %}Proxies{% endblock %}
+{% block subheading %}Mobile / residential SOCKS5, Shadowsocks, V2Ray, Trojan, Hysteria2, SSH-D.{% endblock %}
+{% block content %}
+
+<div class="card mb-4">
+  <p class="card-title">Why this exists</p>
+  <p class="text-sm text-muted">
+    A proxy is an additional egress option on top of VPN/Tor. Useful for
+    <span class="text-accent">mobile residential IPs</span> (look like a real phone),
+    your own VPS via SSH, or DPI-resistant V2Ray/Trojan/Hysteria endpoints.
+    Add as many as you want here, then activate one and switch <a href="/modes" class="text-accent">routing</a>
+    to <code>proxy</code> mode.
+  </p>
+</div>
+
+<div class="card mb-4">
+  <p class="card-title">Add proxy</p>
+  <div class="grid" style="grid-template-columns: 1fr 1fr 2fr; gap:12px">
+    <div class="field">
+      <label class="text-xs text-muted">Label</label>
+      <input id="p-label" placeholder="e.g. mobile-mum-1" maxlength="64">
+    </div>
+    <div class="field">
+      <label class="text-xs text-muted">Kind</label>
+      <select id="p-kind">
+        {% for k in kinds %}<option value="{{k}}">{{k}}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="field">
+      <label class="text-xs text-muted">Note (optional)</label>
+      <input id="p-note" placeholder="provider, expiry, etc." maxlength="256">
+    </div>
+  </div>
+  <div class="field mt-2">
+    <label class="text-xs text-muted">Connection URL <span style="color:#888">(stored encrypted at rest)</span></label>
+    <input id="p-url" placeholder="socks5://user:pass@host:1080  •  ss://...  •  vless://...  •  ssh://user@host:22"
+           style="font-family:'JetBrains Mono',monospace;font-size:12px">
+  </div>
+  <div class="flex gap-2 mt-3">
+    <button class="btn btn-primary" id="p-save">Save</button>
+    <p id="p-msg" class="text-xs text-muted" style="align-self:center"></p>
+  </div>
+</div>
+
+<div class="card">
+  <p class="card-title">Saved proxies</p>
+  <table id="p-table" style="width:100%;border-collapse:collapse;margin-top:8px">
+    <thead>
+      <tr style="text-align:left;color:#888;font-size:12px;border-bottom:1px solid #222">
+        <th style="padding:8px 4px">Label</th>
+        <th>Kind</th>
+        <th>URL</th>
+        <th>Last test</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+  <p id="p-empty" class="text-xs text-muted mt-3" style="display:none">No proxies yet — add one above.</p>
+</div>
+
+<script>
+function el(tag, attrs, text) {
+  const e = document.createElement(tag);
+  if (attrs) for (const k in attrs) {
+    if (k === 'class') e.className = attrs[k];
+    else if (k === 'style') e.style.cssText = attrs[k];
+    else if (k.startsWith('data-')) e.setAttribute(k, attrs[k]);
+    else e[k] = attrs[k];
+  }
+  if (text != null) e.textContent = text;
+  return e;
+}
+
+function renderRow(p) {
+  const tr = el('tr', {style: 'border-bottom:1px solid #1a1a1a'});
+
+  const tdLabel = el('td', {style: 'padding:10px 4px'});
+  const labelStrong = el('b', null, p.label);
+  tdLabel.appendChild(labelStrong);
+  if (p.is_active) {
+    tdLabel.appendChild(document.createTextNode(' '));
+    tdLabel.appendChild(el('span', {class: 'badge ok'}, 'active'));
+  }
+  if (p.note) {
+    tdLabel.appendChild(el('br'));
+    tdLabel.appendChild(el('span', {class: 'text-xs text-muted'}, p.note));
+  }
+  tr.appendChild(tdLabel);
+
+  tr.appendChild(el('td', null, p.kind));
+  tr.appendChild(el('td', {style: "font-family:'JetBrains Mono',monospace;font-size:11px"}, p.url_redacted));
+
+  const tdTest = el('td');
+  if (p.last_test_at) {
+    const ok = p.last_test_ok;
+    tdTest.appendChild(el('span', {class: 'badge ' + (ok ? 'ok' : 'danger')},
+      (ok ? '✓ ' : '✗ ') + (p.last_test_detail || '')));
+  } else {
+    tdTest.appendChild(el('span', {class: 'text-xs text-muted'}, 'untested'));
+  }
+  tr.appendChild(tdTest);
+
+  const tdAct = el('td', {style: 'text-align:right'});
+  tdAct.appendChild(el('button', {class: 'btn btn-sm', 'data-test': p.id}, 'test'));
+  tdAct.appendChild(document.createTextNode(' '));
+  if (p.is_active) {
+    tdAct.appendChild(el('button', {class: 'btn btn-sm', 'data-deact': p.id}, 'deactivate'));
+  } else {
+    tdAct.appendChild(el('button', {class: 'btn btn-sm', 'data-act': p.id}, 'activate'));
+  }
+  tdAct.appendChild(document.createTextNode(' '));
+  const delBtn = el('button', {class: 'btn btn-sm', 'data-del': p.id}, 'delete');
+  if (p.is_active) delBtn.disabled = true;
+  tdAct.appendChild(delBtn);
+  tr.appendChild(tdAct);
+
+  return tr;
+}
+
+async function loadProxies() {
+  const r = await fetch('/api/proxies');
+  const d = await r.json();
+  const tbody = document.querySelector('#p-table tbody');
+  tbody.replaceChildren();
+  document.getElementById('p-empty').style.display = d.proxies.length ? 'none' : 'block';
+  for (const p of d.proxies) tbody.appendChild(renderRow(p));
+}
+
+document.getElementById('p-save').addEventListener('click', async () => {
+  const fd = new FormData();
+  fd.append('label', document.getElementById('p-label').value.trim());
+  fd.append('kind',  document.getElementById('p-kind').value);
+  fd.append('url',   document.getElementById('p-url').value.trim());
+  fd.append('note',  document.getElementById('p-note').value.trim());
+  const r = await fetch('/api/proxies', {method: 'POST', body: fd, headers: csrfHeaders()});
+  const d = await r.json();
+  document.getElementById('p-msg').textContent = d.ok ? 'Saved.' : ('Error: ' + (d.error || ''));
+  if (d.ok) {
+    for (const id of ['p-label','p-url','p-note']) document.getElementById(id).value = '';
+    loadProxies();
+    window.toast('Proxy saved (URL encrypted)', 'ok');
+  }
+});
+
+document.querySelector('#p-table tbody').addEventListener('click', async (e) => {
+  const t = e.target.closest('button'); if (!t) return;
+  const id = t.getAttribute('data-test') || t.getAttribute('data-act') || t.getAttribute('data-del');
+  if (!id) return;
+  if (t.hasAttribute('data-test')) {
+    t.disabled = true; t.textContent = 'testing…';
+    const r = await fetch('/api/proxies/' + id + '/test', {method: 'POST', headers: csrfHeaders()});
+    const d = await r.json();
+    window.toast(d.ok ? ('OK — exit ' + d.exit_ip + ' (' + d.latency_ms + 'ms)') : ('Fail: ' + d.error),
+      d.ok ? 'ok' : 'danger');
+    loadProxies();
+  } else if (t.hasAttribute('data-act')) {
+    const r = await fetch('/api/proxies/' + id + '/activate', {method: 'POST', headers: csrfHeaders()});
+    const d = await r.json();
+    window.toast(d.ok ? ('Activated ' + d.label + '. Now switch routing → proxy.') : ('Fail: ' + d.error),
+      d.ok ? 'ok' : 'danger');
+    loadProxies();
+  } else if (t.hasAttribute('data-deact')) {
+    const r = await fetch('/api/proxies/' + id + '/deactivate', {method: 'POST', headers: csrfHeaders()});
+    const d = await r.json();
+    window.toast(d.ok ? ('Deactivated ' + d.label) : ('Fail: ' + d.error), d.ok ? 'ok' : 'danger');
+    loadProxies();
+  } else if (t.hasAttribute('data-del')) {
+    if (!confirm('Delete this proxy?')) return;
+    const r = await fetch('/api/proxies/' + id, {method: 'DELETE', headers: csrfHeaders()});
+    const d = await r.json();
+    if (d.ok) loadProxies();
+    else window.toast('Delete failed: ' + d.error, 'danger');
+  }
+});
+
+loadProxies();
+</script>
+{% endblock %}

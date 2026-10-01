@@ -1,0 +1,187 @@
+{% extends "base.html" %}
+{% block heading %}System{% endblock %}
+{% block subheading %}Health, password change, and danger-zone actions.{% endblock %}
+{% block content %}
+
+<div class="grid grid-3 mb-5">
+  <div class="card">
+    <p class="card-title">Uptime</p>
+    <p class="card-value" style="font-size:18px">{{ info.uptime }}</p>
+  </div>
+  <div class="card">
+    <p class="card-title">Load</p>
+    <p class="card-value" style="font-size:18px;font-family:'JetBrains Mono',monospace">{{ info.load }}</p>
+  </div>
+  <div class="card">
+    <p class="card-title">CPU temp</p>
+    <p class="card-value">{{ info.temp }} <span style="font-size:14px;color:var(--text-2)">°C</span></p>
+  </div>
+</div>
+
+
+<div class="card mb-4">
+  <p class="card-title">Updates</p>
+  <p class="text-sm text-muted mb-3">Check if Flask app files are newer than the running service.</p>
+  <button class="btn" id="upd-check">Check for updates</button>
+  <button class="btn btn-primary" id="upd-apply" style="display:none">Apply update</button>
+  <pre id="upd-out" class="text-xs mt-3" style="display:none"></pre>
+</div>
+
+<script>
+document.getElementById('upd-check').addEventListener('click', async () => {
+  const r = await fetch('/api/system/update-check');
+  const d = await r.json();
+  const out = document.getElementById('upd-out');
+  out.textContent = JSON.stringify(d, null, 2);
+  out.style.display = 'block';
+  if (d.needs_restart) {
+    document.getElementById('upd-apply').style.display = 'inline-flex';
+    window.toast('Update available', 'ok');
+  } else {
+    window.toast('Up to date', 'ok');
+  }
+});
+document.getElementById('upd-apply').addEventListener('click', async () => {
+  if (!confirm('Apply update? Flask will restart briefly.')) return;
+  const r = await fetch('/api/system/update-apply', {method:'POST', headers: csrfHeaders()});
+  window.toast('Update applied', 'ok');
+});
+</script>
+
+<div class="card mb-4">
+  <p class="card-title">🧅 Tor onion service for admin UI</p>
+  <p class="text-sm text-muted mb-3">
+    Reach this dashboard from anywhere via a <code>.onion</code> address — no port-forwarding,
+    no public WAN exposure. (Tor must be running.)
+  </p>
+  <div class="flex gap-2">
+    <button class="btn" id="onion-enable">Enable</button>
+    <button class="btn" id="onion-disable">Disable</button>
+  </div>
+  <p id="onion-out" class="text-sm mt-3" style="font-family:'JetBrains Mono',monospace;color:var(--accent)"></p>
+</div>
+
+<div class="card mb-4">
+  <p class="card-title">📡 DoH server for roaming devices</p>
+  <p class="text-sm text-muted mb-3">
+    Expose <code>https://10.20.0.1/dns-query</code> to WireGuard clients so phones get
+    encrypted, ad-filtered DNS even off-network.
+  </p>
+  <div class="flex gap-2">
+    <button class="btn" id="doh-enable">Enable</button>
+    <button class="btn" id="doh-disable">Disable</button>
+  </div>
+  <p id="doh-out" class="text-sm mt-3" style="font-family:'JetBrains Mono',monospace"></p>
+</div>
+
+<div class="card mb-4">
+  <p class="card-title">📱 USB-tether WAN failover</p>
+  <p class="text-sm text-muted mb-3">
+    When ISP fails, fall over to a USB-tethered phone (<code>usb0</code>). Useful for
+    remote/travel scenarios — egress becomes mobile carrier.
+  </p>
+  <p id="tether-info" class="text-sm" style="font-family:'JetBrains Mono',monospace"></p>
+  <div class="flex gap-2 mt-2">
+    <button class="btn" id="tether-eth0">Use eth0</button>
+    <button class="btn" id="tether-usb0">Use usb0 (phone)</button>
+    <button class="btn" id="tether-refresh">Refresh</button>
+  </div>
+</div>
+
+<div class="card mb-4">
+  <p class="card-title">Change admin password</p>
+  <form id="pwf">
+    <div class="grid grid-3">
+      <div class="field"><label>Current</label><input type="password" name="current"></div>
+      <div class="field"><label>New (≥12)</label><input type="password" name="new"></div>
+      <div class="field"><label>Confirm</label><input type="password" name="new2"></div>
+    </div>
+    <button class="btn btn-primary">Change password</button>
+  </form>
+</div>
+
+<div class="card" style="border-color:rgba(248,113,113,0.3)">
+  <p class="card-title text-danger">Danger zone</p>
+  <p class="text-sm text-muted mb-4">These actions will interrupt service. Confirm carefully.</p>
+  <div class="flex gap-3" style="flex-wrap:wrap">
+    <button class="btn sys-act" data-act="restart-flask">↻ Restart Flask</button>
+    <button class="btn btn-danger sys-act" data-act="reboot">⏻ Reboot Pi (1 min delay)</button>
+    <button class="btn btn-danger sys-act" data-act="factory-reset">🗑 Factory reset</button>
+  </div>
+</div>
+
+<script>
+document.getElementById('pwf').addEventListener('submit', async e => {
+  e.preventDefault();
+  const fd = new FormData(e.target);
+  const r = await fetch('/api/password', {method:'POST', body:fd, headers: csrfHeaders()});
+  const d = await r.json();
+  window.toast(d.ok ? 'Password changed' : (d.error || 'Failed'), d.ok ? 'ok' : 'danger');
+});
+document.querySelectorAll('.sys-act').forEach(b => b.addEventListener('click', async () => {
+  if (!confirm(`Confirm: ${b.dataset.act}?`)) return;
+  const r = await fetch(`/api/system/${b.dataset.act}`, {method:'POST', headers: csrfHeaders()});
+  const d = await r.json();
+  window.toast(d.ok ? `${b.dataset.act} initiated` : 'Failed', d.ok ? 'ok' : 'danger');
+}));
+
+// Onion admin
+async function onionStatus() {
+  const r = await fetch('/api/onion-admin'); const d = await r.json();
+  const out = document.getElementById('onion-out');
+  if (d.onion) out.textContent = (d.enabled ? '✓ ' : '○ ') + d.onion;
+  else out.textContent = '(disabled)';
+}
+document.getElementById('onion-enable').addEventListener('click', async () => {
+  const r = await fetch('/api/onion-admin/enable', {method:'POST', headers: csrfHeaders()});
+  const d = await r.json();
+  window.toast(d.ok ? 'Onion enabled' : ('Fail: ' + (d.error||'')), d.ok ? 'ok' : 'danger');
+  onionStatus();
+});
+document.getElementById('onion-disable').addEventListener('click', async () => {
+  const r = await fetch('/api/onion-admin/disable', {method:'POST', headers: csrfHeaders()});
+  const d = await r.json();
+  window.toast(d.ok ? 'Onion disabled' : 'Fail', d.ok ? 'ok' : 'danger');
+  onionStatus();
+});
+onionStatus();
+
+// DoH
+async function dohStatus() {
+  const r = await fetch('/api/doh'); const d = await r.json();
+  document.getElementById('doh-out').textContent = (d.status || 'unknown') + (d.endpoint ? ' — ' + d.endpoint : '');
+}
+document.getElementById('doh-enable').addEventListener('click', async () => {
+  const r = await fetch('/api/doh/enable', {method:'POST', headers: csrfHeaders()});
+  const d = await r.json();
+  window.toast(d.ok ? 'DoH enabled' : 'Fail', d.ok ? 'ok' : 'danger');
+  dohStatus();
+});
+document.getElementById('doh-disable').addEventListener('click', async () => {
+  const r = await fetch('/api/doh/disable', {method:'POST', headers: csrfHeaders()});
+  const d = await r.json();
+  window.toast(d.ok ? 'DoH disabled' : 'Fail', d.ok ? 'ok' : 'danger');
+  dohStatus();
+});
+dohStatus();
+
+// Tether
+async function tetherStatus() {
+  const r = await fetch('/api/tether-wan'); const d = await r.json();
+  document.getElementById('tether-info').textContent =
+    'wan=' + (d.wan||'?') + '  eth0=' + (d.eth0||'?') + '  usb0=' + (d.usb0||'?') + '  candidates=' + (d.candidates||'');
+}
+async function tetherSwitch(target) {
+  if (!confirm('Switch WAN to ' + target + '?')) return;
+  const fd = new FormData(); fd.append('target', target);
+  const r = await fetch('/api/tether-wan/switch', {method:'POST', body:fd, headers: csrfHeaders()});
+  const d = await r.json();
+  window.toast(d.ok ? ('WAN → ' + target) : ('Fail: ' + (d.error||'')), d.ok ? 'ok' : 'danger');
+  tetherStatus();
+}
+document.getElementById('tether-eth0').addEventListener('click', () => tetherSwitch('eth0'));
+document.getElementById('tether-usb0').addEventListener('click', () => tetherSwitch('usb0'));
+document.getElementById('tether-refresh').addEventListener('click', tetherStatus);
+tetherStatus();
+</script>
+{% endblock %}

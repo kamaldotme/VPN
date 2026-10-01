@@ -1,0 +1,21 @@
+{% extends "wizard/_base.html" %}
+{% block step %}2b{% endblock %}
+{% block wizard %}
+<h2 style="margin:0 0 8px;font-size:22px;font-weight:600">Scan with your authenticator</h2>
+<p class="sub mb-4">Google Authenticator · Authy · 1Password · etc.</p>
+<div style="text-align:center">
+  <img src="data:image/png;base64,{{ qr_b64 }}" style="background:white;padding:12px;border-radius:12px;width:240px;height:240px">
+</div>
+<p class="text-xs text-muted text-center mt-3">
+  Or paste this secret manually:<br>
+  <code style="font-size:11px;display:inline-block;margin-top:4px">{{ secret }}</code>
+</p>
+<form method="post" class="mt-4">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+  <div class="field"><label>6-digit code from your app</label>
+    <input name="code" maxlength="6" autocomplete="one-time-code" required inputmode="numeric"
+           style="text-align:center;font-size:24px;letter-spacing:8px;font-family:'JetBrains Mono',monospace">
+  </div>
+  <button class="btn btn-primary" style="width:100%">Verify →</button>
+</form>
+{% endblock %}

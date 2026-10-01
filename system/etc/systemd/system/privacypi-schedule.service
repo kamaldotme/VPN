@@ -1,0 +1,7 @@
+[Unit]
+Description=PrivacyPi schedule apply
+After=privacypi-firewall.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/privacypi/scripts/schedule-apply.sh

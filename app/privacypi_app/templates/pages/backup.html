@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block heading %}Backup & Restore{% endblock %}
+{% block subheading %}Encrypted snapshots of your config and database.{% endblock %}
+{% block content %}
+
+<div class="card mb-4">
+  <p class="card-title">Download encrypted backup</p>
+  <p class="text-sm text-muted mb-4">
+    AES-256-CBC + PBKDF2 (100k iter), encrypted with your admin password.
+    Includes /etc/privacypi/, SQLite DB, torrc, AdGuard config.
+  </p>
+  <form id="bf">
+    <div class="flex gap-2">
+      <input type="password" name="password" placeholder="admin password" style="flex:1">
+      <button class="btn btn-primary">Download backup</button>
+    </div>
+  </form>
+</div>
+
+<div class="card">
+  <p class="card-title text-warn">Restore from backup</p>
+  <p class="text-sm text-muted mb-4">
+    ⚠ Overwrites current config. Flask will restart. Same password used to encrypt.
+  </p>
+  <form id="rf" enctype="multipart/form-data">
+    <div class="field"><label>Backup file</label><input type="file" name="file" accept=".bin" required></div>
+    <div class="flex gap-2">
+      <input type="password" name="password" placeholder="admin password" style="flex:1" required>
+      <button class="btn btn-danger">Restore</button>
+    </div>
+  </form>
+  <pre id="rf-result" class="text-xs mt-3" style="display:none"></pre>
+</div>
+
+<script>
+document.getElementById('bf').addEventListener('submit', async e => {
+  e.preventDefault();
+  const fd = new FormData(e.target);
+  const r = await fetch('/api/backup/download', {method:'POST', body:fd, headers: csrfHeaders()});
+  if (r.status === 200) {
+    const blob = await r.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url;
+    a.download = `privacypi-backup-${new Date().toISOString().slice(0,10)}.bin`;
+    a.click(); URL.revokeObjectURL(url);
+    window.toast('Backup downloaded', 'ok');
+  } else {
+    window.toast('Failed: wrong password?', 'danger');
+  }
+});
+
+document.getElementById('rf').addEventListener('submit', async e => {
+  e.preventDefault();
+  if (!confirm('Restore will overwrite current config and restart Flask. Continue?')) return;
+  const fd = new FormData(e.target);
+  const r = await fetch('/api/backup/restore', {method:'POST', body:fd, headers: csrfHeaders()});
+  const out = document.getElementById('rf-result');
+  out.style.display = 'block';
+  if (r.status === 200) {
+    const d = await r.json();
+    out.textContent = (d.stdout || '') + (d.stderr ? '\n[stderr]\n' + d.stderr : '');
+    window.toast(d.ok ? 'Restore complete — Flask restarting' : 'Restore failed', d.ok ? 'ok' : 'danger');
+  } else {
+    out.textContent = await r.text();
+    window.toast('Failed: ' + r.status, 'danger');
+  }
+});
+</script>
+{% endblock %}

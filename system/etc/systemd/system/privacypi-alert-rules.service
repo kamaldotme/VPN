@@ -1,0 +1,14 @@
+[Unit]
+Description=PrivacyPi alert rules evaluator
+After=privacypi-flask.service AdGuardHome.service
+Wants=privacypi-flask.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /opt/privacypi/scripts/alert-rules.py
+Restart=on-failure
+RestartSec=15
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

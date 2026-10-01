@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>{% block title %}PrivacyPi{% endblock %}</title>
+  <meta name="csrf-token" content="{{ csrf_token() }}">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
+</head>
+<body>
+{% if current_user.is_authenticated %}
+<button class="sidebar-toggle" id="sb-toggle" aria-label="Menu">☰</button>
+<div class="sidebar-overlay" id="sb-overlay"></div>
+<div class="app">
+  <aside class="sidebar" id="sb">
+    <div class="brand">
+      <div class="lock">🔒</div>
+      <span>PrivacyPi</span>
+    </div>
+    <div class="nav-section">Overview</div>
+    <a class="nav-item {% if request.path == '/' %}active{% endif %}" href="/">
+      <span class="nav-icon">📊</span> Dashboard
+    </a>
+    <a class="nav-item {% if request.path == '/network' %}active{% endif %}" href="/network">
+      <span class="nav-icon">🌍</span> Internet
+    </a>
+    <a class="nav-item {% if request.path == '/devices' %}active{% endif %}" href="/devices">
+      <span class="nav-icon">📱</span> Devices
+    </a>
+    <div class="nav-section">Privacy</div>
+    <a class="nav-item {% if request.path == '/modes' %}active{% endif %}" href="/modes">
+      <span class="nav-icon">🔀</span> Routing
+    </a>
+    <a class="nav-item {% if request.path == '/vpn' %}active{% endif %}" href="/vpn">
+      <span class="nav-icon">🔐</span> VPN providers
+    </a>
+    <a class="nav-item {% if request.path == '/tor' %}active{% endif %}" href="/tor">
+      <span class="nav-icon">🧅</span> Tor
+    </a>
+    <a class="nav-item {% if request.path == '/proxies' %}active{% endif %}" href="/proxies">
+      <span class="nav-icon">🛰️</span> Proxies
+    </a>
+    <a class="nav-item {% if request.path == '/dns' %}active{% endif %}" href="/dns">
+      <span class="nav-icon">🌐</span> DNS
+    </a>
+    <div class="nav-section">Tools</div>
+    <a class="nav-item {% if request.path == '/wg-server' %}active{% endif %}" href="/wg-server"><span class="nav-icon">📲</span> Travel (WG)</a>
+    <a class="nav-item {% if request.path == '/trust' %}active{% endif %}" href="/trust"><span class="nav-icon">🔏</span> Trust this device</a>
+    <a class="nav-item {% if request.path == '/diagnostics' %}active{% endif %}" href="/diagnostics">
+      <span class="nav-icon">🩺</span> Diagnostics
+    </a>
+    <a class="nav-item {% if request.path == '/backup' %}active{% endif %}" href="/backup">
+      <span class="nav-icon">💾</span> Backup
+    </a>
+    <div class="nav-section">Admin</div>
+    <a class="nav-item {% if request.path == '/system' %}active{% endif %}" href="/system">
+      <span class="nav-icon">⚙️</span> System
+    </a>
+    <a class="nav-item {% if request.path == '/alerts' %}active{% endif %}" href="/alerts"><span class="nav-icon">🔔</span> Alerts</a>
+    <a class="nav-item {% if request.path == '/audit' %}active{% endif %}" href="/audit">
+      <span class="nav-icon">📋</span> Audit log
+    </a>
+  </aside>
+
+  <main class="main">
+    <div class="topbar">
+      <div>
+        <h1>{% block heading %}{% endblock %}</h1>
+        <div class="sub">{% block subheading %}{% endblock %}</div>
+      </div>
+      <div class="user-chip">
+        <span>👤 {{ current_user.username }}</span>
+        <a href="/logout">log out</a>
+      </div>
+    </div>
+
+    <div class="toast-stack" id="toast-stack"></div>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for cat, msg in messages %}
+        <div class="toast {{ 'danger' if cat=='error' else 'ok' }} mb-4">{{ msg }}</div>
+      {% endfor %}
+    {% endwith %}
+
+    {% block content %}{% endblock %}
+  </main>
+</div>
+{% else %}
+<div class="auth-shell">
+  <div class="auth-card">
+    <div class="brand mb-4" style="border:none;padding:0;margin-bottom:24px">
+      <div class="lock">🔒</div>
+      <span>PrivacyPi</span>
+    </div>
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for cat, msg in messages %}
+        <div class="toast {{ 'danger' if cat=='error' else 'ok' }} mb-4">{{ msg }}</div>
+      {% endfor %}
+    {% endwith %}
+    {% block guest_content %}{{ self.content() }}{% endblock %}
+  </div>
+</div>
+{% endif %}
+
+<script>
+window.toast = function(msg, kind = 'ok') {
+  const el = document.createElement('div');
+  el.className = 'toast ' + kind;
+  el.textContent = msg;
+  document.getElementById('toast-stack')?.appendChild(el);
+  setTimeout(() => { el.style.opacity = '0'; el.style.transition = 'opacity 200ms'; }, 4000);
+  setTimeout(() => el.remove(), 4500);
+};
+window.csrfHeaders = function() {
+  return {
+    'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').content,
+    'Referer': location.href,
+  };
+};
+// Mobile sidebar toggle
+(function(){
+  const t = document.getElementById('sb-toggle');
+  const sb = document.getElementById('sb');
+  const ov = document.getElementById('sb-overlay');
+  if (!t || !sb || !ov) return;
+  function close() { sb.classList.remove('open'); ov.classList.remove('open'); }
+  t.addEventListener('click', () => {
+    const open = sb.classList.toggle('open');
+    ov.classList.toggle('open', open);
+  });
+  ov.addEventListener('click', close);
+  sb.querySelectorAll('a').forEach(a => a.addEventListener('click', close));
+})();
+</script>
+</body>
+</html>

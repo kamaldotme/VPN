@@ -1,0 +1,7 @@
+[Unit]
+Description=PrivacyPi VPN health check
+After=privacypi-firewall.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/privacypi/scripts/vpn-failover.sh

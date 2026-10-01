@@ -1,0 +1,38 @@
+# PrivacyPi Tor config
+
+# Transparent proxy
+TransPort 127.0.0.1:9040
+TransPort 10.10.10.1:9040 IsolateClientAddr IsolateClientProtocol
+
+# DNS via Tor
+DNSPort 127.0.0.1:5353
+DNSPort 10.10.10.1:5353
+
+# Local SOCKS (for apps that want direct Tor SOCKS)
+SOCKSPort 127.0.0.1:9050
+
+# Control port (for monitoring)
+ControlPort 9051
+CookieAuthentication 1
+
+# DataDirectory (default works)
+
+# Pluggable transport plugins (always declared; only used when UseBridges=1).
+# 2026 update: in addition to obfs4, register snowflake and webtunnel —
+# the two newest, most censorship-resistant transports.
+ClientTransportPlugin obfs4 exec /usr/bin/obfs4proxy
+ClientTransportPlugin snowflake exec /usr/bin/snowflake-client
+ClientTransportPlugin webtunnel exec /usr/local/bin/webtunnel-client
+
+# Bridges — managed via Flask UI (/tor) when user enables censorship bypass.
+# UseBridges + Bridge lines are appended/removed by the UI controller.
+
+# Privacy
+SafeSocks 1
+TestSocks 1
+
+# Logging — minimal
+Log notice file /var/log/tor/notices.log
+
+# AvoidDiskWrites
+AvoidDiskWrites 1

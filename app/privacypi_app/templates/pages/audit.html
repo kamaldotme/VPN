@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block heading %}Audit Log{% endblock %}
+{% block subheading %}Last 200 admin actions.{% endblock %}
+{% block content %}
+
+<div class="card">
+  <table>
+    <thead><tr>
+      <th>When</th><th>User</th><th>Action</th><th>Detail</th><th>IP</th>
+    </tr></thead>
+    <tbody>
+    {% for r in rows %}
+    <tr>
+      <td><span class="text-muted text-xs">{{ r.timestamp.strftime("%Y-%m-%d %H:%M:%S") }}</span></td>
+      <td>{{ r.user }}</td>
+      <td><code>{{ r.action }}</code></td>
+      <td><span class="text-muted text-xs">{{ (r.detail or '')[:100] }}</span></td>
+      <td><span class="text-muted text-xs">{{ r.ip or '—' }}</span></td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

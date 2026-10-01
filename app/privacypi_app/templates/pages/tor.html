@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block heading %}Tor Configuration{% endblock %}
+{% block subheading %}Bridge editor and DNS-over-Tor toggle.{% endblock %}
+{% block content %}
+
+<div class="card mb-4">
+  <p class="card-title">Service status</p>
+  <div class="flex gap-3 mt-3">
+    <span class="badge ok">tor running</span>
+    <span class="badge">TransPort 9040</span>
+    <span class="badge">DNSPort 5353</span>
+    <span class="badge">ControlPort 9051</span>
+  </div>
+</div>
+
+<div class="card mb-4">
+  <p class="card-title">Bridges</p>
+  <p class="text-sm text-muted mb-3">
+    If your ISP blocks Tor, paste bridge lines from
+    <a href="https://bridges.torproject.org" target="_blank" class="text-accent">bridges.torproject.org</a>.
+    One bridge per line. Empty disables bridges.
+  </p>
+  <div class="flex gap-2 mb-3">
+    <span class="badge ok">obfs4</span>
+    <span class="badge ok">snowflake</span>
+    <span class="badge ok">webtunnel</span>
+    <span class="text-xs text-muted">all three transports registered &amp; ready</span>
+  </div>
+  <textarea id="bridges-text" rows="6" placeholder="obfs4 1.2.3.4:443 ABCD... cert=... iat-mode=0
+snowflake 192.0.2.3:80 2B280B... fingerprint=... url=https://snowflake-broker.torproject.net.global.prod.fastly.net/ ...
+webtunnel [192.0.2.5]:443 ABCD... url=https://example.com/path ver=0.0.1"
+            style="font-family:'JetBrains Mono',monospace;font-size:12px"></textarea>
+  <button class="btn btn-primary mt-3" id="save-bridges">Save bridges + reload Tor</button>
+  <p id="bridges-status" class="text-xs text-muted mt-2"></p>
+</div>
+
+<div class="card">
+  <p class="card-title">DNS-over-Tor</p>
+  <p class="text-sm text-muted mb-3">
+    Route AdGuard's upstream DNS through Tor's DNSPort. Adds latency but no DNS provider sees your queries.
+  </p>
+  <button class="btn dot-toggle" data-state="on">Enable DNS-over-Tor</button>
+  <button class="btn dot-toggle" data-state="off">Disable (use Unbound)</button>
+  <p id="dot-status" class="text-xs text-muted mt-2"></p>
+</div>
+
+<script>
+fetch('/api/tor/bridges').then(r=>r.json()).then(d => {
+  document.getElementById('bridges-status').textContent =
+    d.enabled ? `${d.bridges} bridges active` : 'no bridges (direct Tor)';
+});
+document.getElementById('save-bridges').addEventListener('click', async () => {
+  const fd = new FormData(); fd.append('bridges', document.getElementById('bridges-text').value);
+  const r = await fetch('/api/tor/bridges', {method:'POST', body:fd, headers: csrfHeaders()});
+  const d = await r.json();
+  window.toast(d.ok ? `${d.bridges} bridges saved` : 'Failed', d.ok ? 'ok' : 'danger');
+  document.getElementById('bridges-status').textContent = d.enabled ? `${d.bridges} bridges active` : 'no bridges';
+});
+document.querySelectorAll('.dot-toggle').forEach(b => b.addEventListener('click', async () => {
+  const fd = new FormData(); fd.append('state', b.dataset.state);
+  const r = await fetch('/api/dns/tor-mode', {method:'POST', body:fd, headers: csrfHeaders()});
+  const d = await r.json();
+  document.getElementById('dot-status').textContent = d.out || d.err;
+  window.toast(d.ok ? `DNS-over-Tor: ${b.dataset.state}` : 'Failed', d.ok ? 'ok' : 'danger');
+}));
+</script>
+{% endblock %}

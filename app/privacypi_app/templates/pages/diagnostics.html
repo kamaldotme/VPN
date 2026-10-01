@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block heading %}Diagnostics{% endblock %}
+{% block subheading %}Run network tools from the Pi.{% endblock %}
+{% block content %}
+
+<div class="grid grid-2 mb-4">
+  <div class="card">
+    <p class="card-title">Network tools</p>
+    <div class="flex gap-2 mb-3" style="align-items:flex-end">
+      <div class="field" style="flex:1;margin:0">
+        <label>Target</label>
+        <input id="target" value="cloudflare.com" placeholder="host or IP">
+      </div>
+    </div>
+    <div class="flex gap-2 mb-3">
+      <button class="btn btn-sm" data-tool="ping">Ping</button>
+      <button class="btn btn-sm" data-tool="traceroute">Traceroute</button>
+      <button class="btn btn-sm" data-tool="dig">Dig</button>
+    </div>
+    <pre id="out" style="min-height:200px;max-height:300px;overflow:auto">click a tool to run</pre>
+  </div>
+  
+  <div class="card">
+    <p class="card-title">Speed test</p>
+    <p class="text-sm text-muted mb-3">Tests current routing path. Click below — runs ~30s.</p>
+    <button class="btn btn-primary" id="run-speedtest">Run speed test</button>
+    <div id="speed-result" class="mt-4" style="display:none">
+      <div class="grid grid-3">
+        <div><p class="text-xs text-muted">Download</p><p style="font-size:18px;font-weight:600;color:var(--info);margin:0" id="sp-dl">—</p></div>
+        <div><p class="text-xs text-muted">Upload</p><p style="font-size:18px;font-weight:600;color:var(--accent);margin:0" id="sp-ul">—</p></div>
+        <div><p class="text-xs text-muted">Ping</p><p style="font-size:18px;font-weight:600;margin:0" id="sp-ping">—</p></div>
+      </div>
+      <p class="text-xs text-muted mt-3" id="sp-server"></p>
+    </div>
+    <p id="sp-status" class="text-xs text-muted mt-3"></p>
+  </div>
+</div>
+
+<script>
+document.querySelectorAll('[data-tool]').forEach(b => {
+  b.addEventListener('click', async () => {
+    const target = document.getElementById('target').value;
+    const out = document.getElementById('out');
+    out.textContent = `running ${b.dataset.tool} ${target}…`;
+    const r = await fetch(`/api/diag/${b.dataset.tool}`, {
+      method:'POST', headers:{'Content-Type':'application/json', ...csrfHeaders()},
+      body: JSON.stringify({target})
+    });
+    const d = await r.json();
+    out.textContent = (d.stdout || '') + (d.stderr ? '\n[stderr]\n' + d.stderr : '');
+  });
+});
+
+document.getElementById('run-speedtest').addEventListener('click', async (e) => {
+  e.target.disabled = true;
+  document.getElementById('sp-status').textContent = 'running… (~30s)';
+  document.getElementById('speed-result').style.display = 'none';
+  try {
+    const r = await fetch('/api/speedtest', {method: 'POST', headers: csrfHeaders()});
+    const d = await r.json();
+    if (d.error) {
+      document.getElementById('sp-status').textContent = 'error: ' + d.error;
+    } else {
+      const dl = d.download ? (d.download / 1e6).toFixed(1) : '?';
+      const ul = d.upload ? (d.upload / 1e6).toFixed(1) : '?';
+      const ping = d.ping ? d.ping.toFixed(1) : '?';
+      const srv = (d.server && (d.server.sponsor || d.server.name)) || '?';
+      document.getElementById('sp-dl').textContent = dl + ' Mbps';
+      document.getElementById('sp-ul').textContent = ul + ' Mbps';
+      document.getElementById('sp-ping').textContent = ping + ' ms';
+      document.getElementById('sp-server').textContent = 'Server: ' + srv;
+      document.getElementById('speed-result').style.display = 'block';
+      document.getElementById('sp-status').textContent = 'completed at ' + new Date().toLocaleTimeString();
+    }
+  } catch (err) {
+    document.getElementById('sp-status').textContent = 'error: ' + err;
+  }
+  e.target.disabled = false;
+});
+</script>
+{% endblock %}

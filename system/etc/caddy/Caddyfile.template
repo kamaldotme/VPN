@@ -1,0 +1,37 @@
+# PrivacyPi Caddy frontend — generated from this template by install.sh.
+# Variables interpolated:
+#   __HOST_MDNS__   e.g. privacypi.local
+#   __HOST_IP__     e.g. 192.168.1.155 (whatever the Pi's WAN_IFACE has)
+#   __FLASK_PORT__  default 8443
+
+{
+	log {
+		output file /var/log/caddy/caddy.log {
+			roll_size 10mb
+			roll_keep 5
+		}
+		level INFO
+	}
+}
+
+# Main HTTPS vhost — single SAN cert covers both names.
+__HOST_MDNS__, __HOST_IP__ {
+	tls internal
+
+	# One-click install of the Caddy root CA.
+	@root path /pi-root.crt /pi-root.pem
+	handle @root {
+		root * /var/lib/caddy/.local/share/caddy/pki/authorities/local
+		try_files /root.crt =404
+		header Content-Type application/x-x509-ca-cert
+		header Content-Disposition "attachment; filename=privacypi-root.crt"
+		file_server
+	}
+
+	reverse_proxy 127.0.0.1:__FLASK_PORT__ {
+		header_up X-Forwarded-Proto https
+		header_up X-Forwarded-For {remote_host}
+	}
+
+	encode gzip zstd
+}

@@ -1,0 +1,6 @@
+[Unit]
+Description=Refresh AdGuard blocklists
+
+[Service]
+Type=oneshot
+ExecStart=/opt/privacypi/scripts/rotate-blocklists.sh

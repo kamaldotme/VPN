@@ -1,0 +1,50 @@
+# Seeded by install.sh. Uses the long-stable field layout with a low
+# schema_version so AdGuard Home migrates it forward on first start (safe) —
+# never the other way. __LAN_GW__ and __ADMIN_HASH__ are substituted at install.
+bind_host: 0.0.0.0
+bind_port: 3000
+users:
+  - name: admin
+    password: __ADMIN_HASH__
+language: en
+http_proxy: ""
+theme: auto
+dns:
+  bind_hosts:
+    - 127.0.0.1
+    - __LAN_GW__
+  port: 53
+  # Recurse through the local Unbound resolver (DNSSEC-validating).
+  upstream_dns:
+    - 127.0.0.1:5335
+  bootstrap_dns:
+    - 127.0.0.1:5335
+  upstream_mode: load_balance
+  enable_dnssec: true
+  ratelimit: 0
+  refuse_any: true
+  edns_client_subnet:
+    enabled: false
+filtering:
+  filtering_enabled: true
+  parental_enabled: false
+  safebrowsing_enabled: false
+  protection_enabled: true
+filters:
+  - enabled: true
+    url: https://adguardteam.github.io/HostlistsRegistry/assets/filter_1.txt
+    name: AdGuard DNS filter
+    id: 1
+  - enabled: true
+    url: https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts
+    name: StevenBlack hosts
+    id: 2
+clients:
+  runtime_sources:
+    whois: true
+    arp: true
+    rdns: true
+    dhcp: true
+log_file: ""
+verbose: false
+schema_version: 14

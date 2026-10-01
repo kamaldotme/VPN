@@ -1,0 +1,21 @@
+[Unit]
+Description=PrivacyPi Flask UI
+After=network.target privacypi-firewall.service
+Wants=network.target
+
+[Service]
+Type=simple
+User=privacypi
+Group=privacypi
+WorkingDirectory=/opt/privacypi/app
+ExecStart=/opt/privacypi/venv/bin/gunicorn --bind 0.0.0.0:8443 --certfile /etc/ssl/privacypi/cert.pem --keyfile /etc/ssl/privacypi/key.pem --workers 2 --threads 4 wsgi:app
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=false
+ProtectSystem=strict
+ReadWritePaths=/var/lib/privacypi /var/log/privacypi /run /etc/iptables /etc/privacypi /etc/tor /etc/wireguard /etc/wpa_supplicant /etc/systemd/network
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

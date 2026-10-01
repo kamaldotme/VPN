@@ -1,0 +1,20 @@
+-w /etc/audit/ -p wa -k auditconfig
+-w /etc/audit/rules.d/ -p wa -k auditconfig
+-w /var/log/audit/ -p wa -k auditlog
+-w /etc/ssh/sshd_config -p wa -k sshd
+-w /etc/ssh/sshd_config.d/ -p wa -k sshd
+-w /etc/sudoers -p wa -k sudoers
+-w /etc/sudoers.d/ -p wa -k sudoers
+-w /etc/passwd -p wa -k users
+-w /etc/shadow -p wa -k users
+-w /etc/group -p wa -k users
+-w /etc/gshadow -p wa -k users
+-w /etc/apparmor.d/ -p wa -k apparmor
+-w /etc/privacypi/ -p wa -k privacypi-config
+-w /opt/privacypi/ -p wa -k privacypi-app
+-w /etc/iptables/ -p wa -k netfilter
+-w /etc/sysctl.conf -p wa -k sysctl
+-w /etc/sysctl.d/ -p wa -k sysctl
+-a always,exit -F arch=b64 -S execve -k exec
+-a always,exit -F arch=b32 -S execve -k exec
+-e 2

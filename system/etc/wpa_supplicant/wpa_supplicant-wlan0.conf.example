@@ -1,0 +1,17 @@
+# Template for the WiFi-WAN supplicant config.
+# wan-config.sh writes the real file to /etc/wpa_supplicant/wpa_supplicant-wlan0.conf
+# (mode 0600 root:root) with the PSK HASHED via `wpa_passphrase` — never plaintext.
+# The standalone wpa_supplicant@wlan0.service reads it.
+ctrl_interface=/run/wpa_supplicant
+ctrl_interface_group=0
+update_config=1
+# country is set from the regulatory domain at write time; defaults to US.
+country=US
+
+network={
+    ssid="UPSTREAM_SSID"
+    # psk is the 64-hex output of: wpa_passphrase "SSID" "passphrase"
+    psk=0000000000000000000000000000000000000000000000000000000000000000
+    key_mgmt=WPA-PSK
+    scan_ssid=1
+}

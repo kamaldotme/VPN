@@ -1,0 +1,154 @@
+{% extends "base.html" %}
+{% block heading %}Anomalies & Live DNS{% endblock %}
+{% block subheading %}IsolationForest scans + real-time DNS stream + audit-chain integrity.{% endblock %}
+{% block content %}
+
+<div class="card mb-4">
+  <div class="flex-between">
+    <div>
+      <p class="card-title">📊 Latest ML scan (15-min schedule)</p>
+      <p class="text-sm text-muted" id="scan-meta">loading…</p>
+    </div>
+    <button class="btn btn-primary" id="run-now">Run scan now</button>
+  </div>
+</div>
+
+<div class="card mb-4">
+  <p class="card-title">🚨 Anomalous clients</p>
+  <table style="width:100%">
+    <thead><tr style="text-align:left;color:#888;font-size:12px">
+      <th>IP</th><th>Score</th><th>Queries</th><th>Unique domains</th><th>Block %</th>
+    </tr></thead>
+    <tbody id="anom-body"><tr><td colspan="5" class="text-muted text-sm">loading…</td></tr></tbody>
+  </table>
+</div>
+
+<div class="card mb-4">
+  <p class="card-title">🔐 Audit-log integrity (HMAC chain)</p>
+  <p class="text-sm text-muted mb-3">
+    Every audit row hashes the previous one with HMAC-SHA256(master_key).
+    A modified or deleted row breaks the chain at the next entry.
+  </p>
+  <p id="audit-state" class="text-sm" style="font-family:'JetBrains Mono',monospace">checking…</p>
+  <button class="btn mt-2" id="verify-chain">Re-verify now</button>
+</div>
+
+<div class="card">
+  <p class="card-title">📡 Live DNS query stream</p>
+  <p class="text-sm text-muted mb-3">
+    Tailing AdGuard's query log in real time. Blocked queries appear with a red dot.
+  </p>
+  <div class="flex gap-2 mb-2">
+    <button class="btn btn-sm" id="dns-pause">Pause</button>
+    <button class="btn btn-sm" id="dns-clear">Clear</button>
+    <span id="dns-count" class="text-xs text-muted" style="align-self:center">0 lines</span>
+  </div>
+  <div id="dns-feed" style="font-family:'JetBrains Mono',monospace;font-size:11px;max-height:380px;overflow-y:auto;background:#0a0a0a;border-radius:6px;padding:8px"></div>
+</div>
+
+<script>
+function el(t, attrs, txt) {
+  const e = document.createElement(t);
+  if (attrs) for (const k in attrs) e[k] = attrs[k];
+  if (txt != null) e.textContent = txt;
+  return e;
+}
+
+// ---- ML scan ----
+async function refresh() {
+  const r = await fetch('/api/anomalies');
+  const d = await r.json();
+  const meta = document.getElementById('scan-meta');
+  if (d.error) { meta.textContent = 'error: ' + d.error; return; }
+  meta.textContent = d.timestamp
+    ? `${d.timestamp} · ${d.queries_analyzed} queries · ${d.clients_analyzed} clients`
+    : 'no scan yet — click "Run scan now"';
+  const tbody = document.getElementById('anom-body');
+  tbody.replaceChildren();
+  if (!d.anomalies || d.anomalies.length === 0) {
+    const tr = el('tr');
+    tr.appendChild(el('td', {colSpan:5, className:'text-ok text-sm', style:'padding:20px;text-align:center'},
+      '✓ No anomalies detected.'));
+    tbody.appendChild(tr);
+    return;
+  }
+  for (const a of d.anomalies) {
+    const tr = el('tr');
+    tr.appendChild(el('td', null)).appendChild(el('code', null, a.client_ip));
+    tr.appendChild(el('td', {className:'text-warn'}, a.anomaly_score.toFixed(3)));
+    tr.appendChild(el('td', null, String(a.features.queries)));
+    tr.appendChild(el('td', null, String(a.features.unique_domains)));
+    tr.appendChild(el('td', null, (a.features.block_ratio * 100).toFixed(1) + '%'));
+    tbody.appendChild(tr);
+  }
+}
+document.getElementById('run-now').addEventListener('click', async (e) => {
+  e.target.disabled = true; e.target.textContent = 'running…';
+  await fetch('/api/anomalies/run', {method:'POST', headers: csrfHeaders()});
+  await refresh();
+  e.target.disabled = false; e.target.textContent = 'Run scan now';
+  window.toast('Scan complete', 'ok');
+});
+
+// ---- Audit chain ----
+async function verifyChain() {
+  const slot = document.getElementById('audit-state');
+  slot.textContent = 'verifying…';
+  const r = await fetch('/api/audit/verify');
+  const d = await r.json();
+  if (d.ok) {
+    slot.textContent = '✓ chain intact — ' + d.total_checked + ' rows verified';
+    slot.style.color = 'var(--ok, #4ade80)';
+  } else {
+    slot.textContent = '✗ chain BROKEN at id=' + d.first_bad_id + ' (checked ' + d.total_checked + ')';
+    slot.style.color = 'var(--danger, #f87171)';
+  }
+}
+document.getElementById('verify-chain').addEventListener('click', verifyChain);
+
+// ---- DNS stream (polling — HTTP/2 SSE through Caddy is finicky) ----
+const feed = document.getElementById('dns-feed');
+const counter = document.getElementById('dns-count');
+let count = 0, paused = false, lastSeen = '';
+function appendRow(d) {
+  if (!d.host) return;
+  const row = el('div', {style: 'padding:2px 0;display:flex;gap:8px;align-items:center'});
+  row.appendChild(el('span', {style: 'color:' + (d.blocked ? '#f87171' : '#888') + ';font-size:14px'}, '●'));
+  row.appendChild(el('span', {style: 'color:#666;width:80px'}, (d.t || '').slice(11,19)));
+  row.appendChild(el('span', {style: 'color:#aaa;width:130px;overflow:hidden;text-overflow:ellipsis'}, d.client || ''));
+  row.appendChild(el('span', {style: 'color:#999;width:50px'}, d.type || ''));
+  row.appendChild(el('span', {style: 'color:#fff;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap'}, d.host));
+  feed.insertBefore(row, feed.firstChild);
+  while (feed.children.length > 200) feed.removeChild(feed.lastChild);
+  count++;
+  counter.textContent = count + ' queries';
+}
+async function pollDns() {
+  if (paused) return;
+  try {
+    const r = await fetch('/api/dns/recent');
+    const d = await r.json();
+    const fresh = (d.queries || []).filter(q => (q.t || '') > lastSeen).reverse();
+    for (const q of fresh) {
+      appendRow(q);
+      if (q.t > lastSeen) lastSeen = q.t;
+    }
+  } catch {}
+}
+function startStream() {
+  pollDns();
+  setInterval(pollDns, 2500);
+}
+document.getElementById('dns-pause').addEventListener('click', (e) => {
+  paused = !paused;
+  e.target.textContent = paused ? 'Resume' : 'Pause';
+});
+document.getElementById('dns-clear').addEventListener('click', () => {
+  feed.replaceChildren(); count = 0; counter.textContent = '0 queries';
+});
+
+refresh();
+verifyChain();
+startStream();
+</script>
+{% endblock %}

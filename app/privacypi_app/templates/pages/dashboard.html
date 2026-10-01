@@ -1,0 +1,186 @@
+{% extends "base.html" %}
+{% block heading %}Dashboard{% endblock %}
+{% block subheading %}Live status of your privacy router.{% endblock %}
+{% block content %}
+
+{% set m = status.mode %}
+{% set protected = m in ('openvpn','wireguard','tor','proxy') %}
+{% set exit_name = {'openvpn':(status.provider or 'VPN'),'wireguard':(status.provider or 'WireGuard'),'tor':'Tor network','proxy':'Proxy'}.get(m, 'Your ISP') %}
+
+<!-- ===== Hero: connection status + chain ===== -->
+<div class="hero mb-4">
+  <div class="hero-grid">
+    <div class="flex-center" style="gap:18px">
+      <div class="shield">{{ '🛡️' if protected else ('⛔' if m=='killswitch' else '🌐') }}</div>
+      <div>
+        <div class="hero-status-label">Connection</div>
+        <div class="hero-status-title">
+          {% if m=='killswitch' %}Blocked <span class="dim">· kill switch on</span>
+          {% elif protected %}Protected <span class="dim">· via {{ exit_name }}</span>
+          {% else %}Direct <span class="dim">· no VPN</span>{% endif %}
+        </div>
+        <div class="mt-3">
+          {% if protected %}<span class="pill">● Encrypted &amp; private</span>
+          {% elif m=='killswitch' %}<span class="pill" style="background:var(--danger-bg);color:var(--danger);border-color:rgba(248,113,113,.3)">● Internet paused</span>
+          {% else %}<span class="pill dim">● Unencrypted</span>{% endif %}
+          <span class="pill dim">{{ m }}</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="chain">
+      <div class="chain-node">
+        <div class="chain-ico">📱</div>
+        <div class="chain-label">Your devices</div>
+        <div class="chain-sub" id="dev-count">—</div>
+      </div>
+      <div class="chain-link"></div>
+      <div class="chain-node hl">
+        <div class="chain-ico">🛡️</div>
+        <div class="chain-label">PrivacyPi</div>
+        <div class="chain-sub">ad-block · DNSSEC</div>
+      </div>
+      <div class="chain-link"></div>
+      <div class="chain-node {{ 'hl' if protected }}">
+        <div class="chain-ico">{{ '🔐' if protected else ('⛔' if m=='killswitch' else '🌍') }}</div>
+        <div class="chain-label">{{ exit_name }}</div>
+        <div class="chain-sub">{{ status.server or ('—' if not protected else 'tunnel') }}</div>
+      </div>
+      <div class="chain-link"></div>
+      <div class="chain-node">
+        <div class="chain-ico">🌐</div>
+        <div class="chain-label">Internet</div>
+        <div class="chain-sub"><span class="pulse" style="color:var(--accent)">●</span> live</div>
+      </div>
+    </div>
+
+    <div class="hero-ip">
+      <div class="hero-status-label">Public IP</div>
+      <div class="v" id="ip-val">{{ status.public_ip or '—' }}</div>
+      <div class="chain-sub mt-3">Profile · {{ profile|replace("-"," ")|title }}</div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== Stat tiles ===== -->
+<div class="grid grid-4 mb-4">
+  <div class="card">
+    <div class="stat">
+      <div class="donut-wrap">
+        <svg class="donut" viewBox="0 0 76 76">
+          <defs><linearGradient id="dg" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stop-color="#5eead4"/><stop offset="1" stop-color="#7c8bff"/>
+          </linearGradient></defs>
+          <circle class="track" cx="38" cy="38" r="32"/>
+          <circle class="val" id="donut-val" cx="38" cy="38" r="32" stroke-dasharray="201" stroke-dashoffset="201"/>
+        </svg>
+        <div class="donut-num" id="ins-rate">—</div>
+      </div>
+      <div>
+        <div class="lbl">Ads &amp; trackers</div>
+        <div class="num" style="font-size:20px">blocked</div>
+        <div class="chain-sub">of all DNS lookups</div>
+      </div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="lbl" style="font-size:12px;color:var(--text-2)">Threats stopped</div>
+    <div class="num" style="color:var(--danger)" id="ins-threats">—</div>
+    <div class="chain-sub">malware &amp; phishing · today</div>
+  </div>
+  <div class="card">
+    <div class="lbl" style="font-size:12px;color:var(--text-2)">Data saved</div>
+    <div class="num" style="color:var(--info)" id="ins-bytes">—</div>
+    <div class="chain-sub" id="ins-time">— of load time</div>
+  </div>
+  <div class="card">
+    <div class="lbl" style="font-size:12px;color:var(--text-2)">Devices online</div>
+    <div class="num" id="dev-num">—</div>
+    <div class="flex gap-2 mt-3">
+      <span class="badge {% if status.tun0_up %}ok{% endif %}">tun0</span>
+      <span class="badge {% if status.wg0_up %}ok{% endif %}">wg0</span>
+    </div>
+  </div>
+</div>
+
+<!-- ===== Bandwidth + narrative ===== -->
+<div class="grid grid-2 mb-4">
+  <div class="card">
+    <p class="section-title">Bandwidth · last 24h</p>
+    <div class="bars" id="bw-bars"><div class="skel" style="width:100%;height:100%"></div></div>
+    <div class="flex" style="gap:28px;margin-top:14px">
+      <div><div class="chain-sub">Downloaded</div><div class="num" style="font-size:20px;color:var(--info)" id="bw-rx">—</div></div>
+      <div><div class="chain-sub">Uploaded</div><div class="num" style="font-size:20px;color:var(--accent)" id="bw-tx">—</div></div>
+    </div>
+  </div>
+  <div class="card" style="background:radial-gradient(700px 160px at 100% 0,rgba(124,139,255,.10),transparent 60%),linear-gradient(180deg,rgba(255,255,255,.04),transparent),var(--bg-1)">
+    <p class="section-title" style="color:var(--accent)">Today on PrivacyPi</p>
+    <p class="num" style="font-size:22px;line-height:1.3;font-weight:600" id="ins-headline">loading…</p>
+    <p class="chain-sub" style="margin-top:10px">Updated continuously from your DNS activity.</p>
+  </div>
+</div>
+
+<!-- ===== Top blocked + active devices ===== -->
+<div class="grid grid-2">
+  <div class="card">
+    <p class="section-title">Most-blocked domains</p>
+    <ul class="rank" id="ins-top-blocked"><li class="chain-sub">loading…</li></ul>
+  </div>
+  <div class="card">
+    <p class="section-title">Most-active devices</p>
+    <ul class="rank" id="ins-top-clients"><li class="chain-sub">loading…</li></ul>
+  </div>
+</div>
+
+<script>
+const CIRC = 2 * Math.PI * 32;
+function fmtBytes(b){ if(b>1e9)return (b/1e9).toFixed(2)+' GB'; if(b>1e6)return (b/1e6).toFixed(1)+' MB'; if(b>1e3)return (b/1e3).toFixed(0)+' KB'; return (b||0)+' B'; }
+
+// keep the public IP live
+const es = new EventSource("/sse/status");
+es.onmessage = e => { try { const d = JSON.parse(e.data); if (d.public_ip) document.getElementById('ip-val').textContent = d.public_ip; } catch(_){} };
+
+async function loadInsights(){
+  try {
+    const d = await (await fetch('/api/insights/dashboard')).json();
+    const rate = d.totals.block_rate_pct;
+    document.getElementById('ins-rate').textContent = rate + '%';
+    const off = CIRC * (1 - rate/100);
+    const v = document.getElementById('donut-val'); v.setAttribute('stroke-dasharray', CIRC.toFixed(1)); v.setAttribute('stroke-dashoffset', off.toFixed(1));
+    document.getElementById('ins-threats').textContent = d.totals.threats.toLocaleString();
+    document.getElementById('ins-bytes').textContent = d.narrative.saved_bandwidth;
+    document.getElementById('ins-time').textContent = d.narrative.saved_time + ' of load time';
+    document.getElementById('ins-headline').textContent = d.narrative.headline;
+    const maxB = Math.max(...d.top_blocked_domains.map(x=>x.count), 1);
+    document.getElementById('ins-top-blocked').replaceChildren(...d.top_blocked_domains.map(x=>{
+      const li=document.createElement('li'); li.style.flexDirection='column'; li.style.alignItems='stretch';
+      li.innerHTML = `<div style="display:flex;justify-content:space-between"><span class="dom">${x.name}</span><span class="ct">×${x.count.toLocaleString()}</span></div><div class="barbg"><i style="width:${100*x.count/maxB}%"></i></div>`;
+      return li; }));
+    const maxC = Math.max(...d.top_clients.map(x=>x.count), 1);
+    document.getElementById('ins-top-clients').replaceChildren(...d.top_clients.map(x=>{
+      const li=document.createElement('li'); li.style.flexDirection='column'; li.style.alignItems='stretch';
+      li.innerHTML = `<div style="display:flex;justify-content:space-between"><span class="dom">${x.ip}</span><span class="ct">${x.count.toLocaleString()} queries</span></div><div class="barbg"><i style="width:${100*x.count/maxC}%"></i></div>`;
+      return li; }));
+    if (d.devices_online != null) { document.getElementById('dev-num').textContent = d.devices_online; document.getElementById('dev-count').textContent = d.devices_online + ' connected'; }
+  } catch(e){ document.getElementById('ins-headline').textContent = 'Insights unavailable yet.'; }
+}
+
+async function loadBandwidth(){
+  try {
+    const d = await (await fetch('/api/bandwidth')).json();
+    const i = (d['br-vlan10']?.interfaces||[])[0];
+    if(!i){ throw 0; }
+    document.getElementById('bw-rx').textContent = fmtBytes(i.traffic.total.rx);
+    document.getElementById('bw-tx').textContent = fmtBytes(i.traffic.total.tx);
+    const hours = (i.traffic.hour||i.traffic.hours||[]).slice(-24);
+    const series = hours.map(h => (h.rx||0)+(h.tx||0));
+    const max = Math.max(...series, 1);
+    const wrap = document.getElementById('bw-bars'); wrap.replaceChildren();
+    (series.length?series:Array(24).fill(0)).forEach(v=>{ const b=document.createElement('div'); b.className='bar'; b.style.height=Math.max(3,100*v/max)+'%'; wrap.appendChild(b); });
+  } catch(e){ document.getElementById('bw-bars').innerHTML='<span class="chain-sub">collecting traffic data…</span>'; }
+}
+
+loadInsights(); loadBandwidth();
+setInterval(loadInsights, 30000);
+</script>
+{% endblock %}

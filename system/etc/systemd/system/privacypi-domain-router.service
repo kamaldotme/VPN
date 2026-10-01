@@ -1,0 +1,16 @@
+[Unit]
+Description=PrivacyPi per-domain routing daemon
+After=AdGuardHome.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /opt/privacypi/scripts/domain-router.py
+Restart=on-failure
+RestartSec=10
+NoNewPrivileges=false
+ProtectSystem=strict
+ReadWritePaths=/var/lib/privacypi /run
+
+[Install]
+WantedBy=multi-user.target

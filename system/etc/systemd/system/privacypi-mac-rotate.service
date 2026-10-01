@@ -1,0 +1,7 @@
+[Unit]
+Description=PrivacyPi MAC rotation
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/privacypi/scripts/rotate-mac.sh wlan0

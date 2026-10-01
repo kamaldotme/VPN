@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block heading %}Schedule{% endblock %}
+{% block subheading %}Time-based routing. Rules apply every minute. First match wins.{% endblock %}
+{% block content %}
+
+<div class="card mb-4">
+  <p class="card-title">Active rules</p>
+  <table>
+    <thead><tr><th>Name</th><th>Mode</th><th>Window</th><th>Days</th><th></th></tr></thead>
+    <tbody id="rules-body"></tbody>
+  </table>
+  <button class="btn mt-3" id="add-rule">+ Add rule</button>
+  <button class="btn btn-primary mt-3" id="save-rules">Save schedule</button>
+</div>
+
+<div class="card">
+  <p class="card-title">Examples</p>
+  <pre class="text-xs">{ "name": "tor-night", "mode": "tor", "start": "22:00", "end": "07:00", "days": [0,1,2,3,4,5,6] }
+{ "name": "direct-work-hours", "mode": "direct", "start": "09:00", "end": "17:00", "days": [1,2,3,4,5] }</pre>
+  <p class="text-xs text-muted mt-2">Days: Sun=0, Mon=1, ..., Sat=6. End before start = crosses midnight.</p>
+</div>
+
+<script>
+let rules = {{ schedule|tojson }};
+function render() {
+  document.getElementById('rules-body').innerHTML = rules.length === 0 ?
+    '<tr><td colspan="5" class="text-muted text-sm" style="padding:20px;text-align:center">No rules yet</td></tr>' :
+    rules.map((r,i) => `
+    <tr>
+      <td><input value="${r.name||''}" data-i="${i}" data-k="name"></td>
+      <td><select data-i="${i}" data-k="mode">
+        ${['direct','tor','openvpn','wireguard','proxy','killswitch'].map(m =>
+          `<option value="${m}" ${r.mode===m?'selected':''}>${m}</option>`).join('')}
+      </select></td>
+      <td><input value="${r.start||''}" data-i="${i}" data-k="start" placeholder="22:00" style="width:80px"> to
+          <input value="${r.end||''}" data-i="${i}" data-k="end" placeholder="07:00" style="width:80px"></td>
+      <td><input value="${(r.days||[0,1,2,3,4,5,6]).join(',')}" data-i="${i}" data-k="days" placeholder="0,1,2..." style="width:120px"></td>
+      <td><button class="btn btn-sm btn-danger del-rule" data-i="${i}">×</button></td>
+    </tr>
+  `).join('');
+  document.querySelectorAll('[data-k]').forEach(el => el.addEventListener('change', e => {
+    const i = +e.target.dataset.i, k = e.target.dataset.k;
+    rules[i][k] = k === 'days' ? e.target.value.split(',').map(d=>+d).filter(d=>d>=0&&d<=6) : e.target.value;
+  }));
+  document.querySelectorAll('.del-rule').forEach(b => b.addEventListener('click', e => {
+    rules.splice(+e.target.dataset.i, 1); render();
+  }));
+}
+render();
+document.getElementById('add-rule').addEventListener('click', () => {
+  rules.push({name:'new-rule', mode:'direct', start:'09:00', end:'17:00', days:[0,1,2,3,4,5,6]});
+  render();
+});
+document.getElementById('save-rules').addEventListener('click', async () => {
+  const r = await fetch('/api/schedule', {
+    method:'POST', headers: {'Content-Type':'application/json', ...csrfHeaders()},
+    body: JSON.stringify(rules)
+  });
+  const d = await r.json();
+  window.toast(d.ok ? 'Schedule saved' : 'Failed: ' + (d.error||''), d.ok ? 'ok' : 'danger');
+});
+</script>
+{% endblock %}

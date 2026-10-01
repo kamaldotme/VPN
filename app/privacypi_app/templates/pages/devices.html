@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% block heading %}Connected Devices{% endblock %}
+{% block subheading %}Everything on your PrivacyPi WiFi — with per-device routing. Refreshes every 10s.{% endblock %}
+{% block content %}
+
+<div class="summary" id="dev-summary">
+  <div class="chip"><div><div class="n" id="s-total">—</div><div class="l">Devices</div></div></div>
+  <div class="chip"><div><div class="n text-ok" id="s-active">—</div><div class="l">Active now</div></div></div>
+  <div class="chip"><div><div class="n text-muted" id="s-idle">—</div><div class="l">Idle</div></div></div>
+  <div style="flex:1"></div>
+  <button class="btn btn-sm" id="dev-refresh" style="align-self:center">↻ Refresh</button>
+</div>
+
+<div class="grid-auto" id="dev-grid">
+  <div class="tile"><div class="skel" style="height:60px"></div></div>
+  <div class="tile"><div class="skel" style="height:60px"></div></div>
+  <div class="tile"><div class="skel" style="height:60px"></div></div>
+</div>
+
+<script>
+const MODES = ['none', 'direct', 'tor', 'killswitch'];
+const MODE_LABEL = {none:'Follow router', direct:'Direct (no VPN)', tor:'Through Tor', killswitch:'Block'};
+
+function iconFor(c){
+  const s = ((c.name||'') + ' ' + (c.vendor||'')).toLowerCase();
+  if (/iphone|pixel|galaxy|phone|android|oneplus/.test(s)) return '📱';
+  if (/macbook|laptop|thinkpad|surface|xps/.test(s)) return '💻';
+  if (/tv|roku|chromecast|firestick|bravia|samsung/.test(s)) return '📺';
+  if (/ipad|tablet/.test(s)) return '📲';
+  if (/echo|nest|hue|smart|iot|printer|camera/.test(s)) return '🏠';
+  if (/mac|imac|desktop|pc/.test(s)) return '🖥️';
+  return '🔌';
+}
+function elx(t,a,x){const e=document.createElement(t);if(a)for(const k in a)e[k]=a[k];if(x!=null)e.textContent=x;return e;}
+
+async function refresh(){
+  let d;
+  try { d = await (await fetch('/api/devices')).json(); }
+  catch(e){ return; }
+  const clients = d.clients || [];
+  const grid = document.getElementById('dev-grid');
+  let active = 0, idle = 0;
+  grid.replaceChildren();
+  if (!clients.length){
+    grid.innerHTML = '<div class="tile text-muted text-sm" style="grid-column:1/-1;text-align:center;padding:40px">No devices are connected to the PrivacyPi WiFi yet.</div>';
+  }
+  for (const c of clients){
+    const st = (c.arp_state || c.status || '').toUpperCase();
+    const isActive = st === 'REACHABLE' || st === 'ACTIVE' || st === '';
+    isActive ? active++ : idle++;
+    const stateCls = st === 'REACHABLE' || st === 'ACTIVE' ? 'ok' : (st === 'STALE' ? 'warn' : '');
+    const stateTxt = isActive ? 'active' : (st === 'STALE' ? 'idle' : st.toLowerCase() || 'idle');
+    const name = (c.name && c.name !== 'unknown') ? c.name : '(unnamed device)';
+
+    const tile = elx('div', {className:'tile'});
+    const head = elx('div', {className:'tile-head'});
+    head.appendChild(elx('div', {className:'avatar glyph'}, iconFor(c)));
+    const t = elx('div', {style:'flex:1;min-width:0'});
+    t.appendChild(elx('div', {className:'tile-name', style:'overflow:hidden;text-overflow:ellipsis;white-space:nowrap'}, name));
+    t.appendChild(elx('div', {className:'tile-meta'}, c.vendor || 'Unknown vendor'));
+    head.appendChild(t);
+    head.appendChild(elx('span', {className:'badge ' + stateCls}, stateTxt));
+    tile.appendChild(head);
+
+    const kv1 = elx('div', {className:'kv'}); kv1.appendChild(elx('span',{className:'k'},'IP address')); kv1.appendChild(elx('span',{className:'v'}, c.ip||'—')); tile.appendChild(kv1);
+    const kv2 = elx('div', {className:'kv'}); kv2.appendChild(elx('span',{className:'k'},'MAC')); kv2.appendChild(elx('span',{className:'v'}, c.mac||'—')); tile.appendChild(kv2);
+    if (c.bytes != null){
+      const kv3 = elx('div', {className:'kv'}); kv3.appendChild(elx('span',{className:'k'},'Traffic')); kv3.appendChild(elx('span',{className:'v'}, fmtBytes(c.bytes))); tile.appendChild(kv3);
+    }
+
+    const ctl = elx('div', {style:'margin-top:14px'});
+    ctl.appendChild(elx('div', {className:'chain-sub', style:'margin-bottom:6px'}, 'Routing for this device'));
+    const sel = elx('select', {className:'dev-mode'}); sel.dataset.mac = c.mac;
+    for (const m of MODES){ const o = elx('option', {value:m}, MODE_LABEL[m]); if ((c.route_override||'none')===m) o.selected = true; sel.appendChild(o); }
+    sel.addEventListener('change', async e => {
+      const r = await fetch(`/api/device/${e.target.dataset.mac}/mode/${e.target.value}`, {method:'POST', headers: csrfHeaders()});
+      const j = await r.json();
+      window.toast(j.ok ? `${name} → ${MODE_LABEL[e.target.value]}` : 'Failed: '+(j.stderr||j.error), j.ok?'ok':'danger');
+    });
+    ctl.appendChild(sel); tile.appendChild(ctl);
+    grid.appendChild(tile);
+  }
+  document.getElementById('s-total').textContent = clients.length;
+  document.getElementById('s-active').textContent = active;
+  document.getElementById('s-idle').textContent = idle;
+}
+function fmtBytes(n){ n=Number(n); if(n>=1e9)return (n/1e9).toFixed(2)+' GB'; if(n>=1e6)return (n/1e6).toFixed(1)+' MB'; if(n>=1e3)return (n/1e3).toFixed(0)+' KB'; return (n||0)+' B'; }
+document.getElementById('dev-refresh').addEventListener('click', refresh);
+refresh();
+setInterval(refresh, 10000);
+</script>
+{% endblock %}

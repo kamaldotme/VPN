@@ -1,0 +1,26 @@
+[project]
+name = "privacypi-app"
+version = "0.1.0"
+description = "PrivacyPi admin web UI"
+requires-python = ">=3.10"
+dependencies = [
+  "flask>=3.0",
+  "flask-login>=0.6",
+  "flask-wtf>=1.2",
+  "sqlalchemy>=2.0",
+  "alembic>=1.13",
+  "bcrypt>=4.1",
+  "pyotp>=2.9",
+  "qrcode[pil]>=7.4",
+  "cryptography>=42",
+  "gunicorn>=21",
+  "apprise>=1.7",
+]
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["privacypi_app*"]

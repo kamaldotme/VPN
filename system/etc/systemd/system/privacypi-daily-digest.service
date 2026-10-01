@@ -1,0 +1,6 @@
+[Unit]
+Description=PrivacyPi daily digest
+
+[Service]
+Type=oneshot
+ExecStart=/opt/privacypi/scripts/daily-digest.sh

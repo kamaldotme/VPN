@@ -1,0 +1,19 @@
+# DHCP on the built-in WiFi radio when it is used as the WAN uplink.
+# Activated by wan-config.sh (which also starts wpa_supplicant@wlan0.service).
+# Inert when wlan0 has no association. Higher metric than eth0 (50) so wired
+# wins when both are present; client egress is pinned to $WAN_IFACE in routing
+# table 100 regardless, so this metric only affects the main table.
+[Match]
+Name=wlan0
+
+[Network]
+DHCP=ipv4
+IPv6AcceptRA=no
+
+[DHCPv4]
+RouteMetric=100
+# PrivacyPi forces DNS to itself — never accept the upstream WiFi's DNS.
+UseDNS=false
+
+[Link]
+RequiredForOnline=no

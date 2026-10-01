@@ -1,0 +1,57 @@
+privacypi ALL=(root) NOPASSWD: /opt/privacypi/scripts/route-mode.sh, \
+                                /opt/privacypi/scripts/wan-config.sh, \
+                                /opt/privacypi/scripts/vpn-status.sh, \
+                                /opt/privacypi/scripts/proxy-up.sh, \
+                                /opt/privacypi/scripts/proxy-down.sh, \
+                                /opt/privacypi/scripts/killswitch.sh, \
+                                /opt/privacypi/scripts/vpn-write.sh, \
+                                /opt/privacypi/scripts/system-action.sh, \
+                                /opt/privacypi/scripts/backup-create.sh, \
+                                /opt/privacypi/scripts/backup-restore.sh, \
+                                /opt/privacypi/scripts/list-clients.sh, \
+                                /opt/privacypi/scripts/device-route.sh, \
+                                /opt/privacypi/scripts/speedtest.sh, \
+                                /opt/privacypi/scripts/self-update.sh, \
+                                /opt/privacypi/scripts/wg-server.sh, \
+                                /opt/privacypi/scripts/vpn-failover.sh, \
+                                /opt/privacypi/scripts/schedule-apply.sh, \
+                                /opt/privacypi/scripts/tor-dns.sh, \
+                                /opt/privacypi/scripts/tor-bridges.sh, \
+                                /opt/privacypi/scripts/rotate-mac.sh, \
+                                /opt/privacypi/scripts/anomaly-detect.py, \
+                                /opt/privacypi/scripts/proxy-write.sh, \
+                                /opt/privacypi/scripts/proxy-test.sh, \
+                                /opt/privacypi/scripts/onion-admin.sh, \
+                                /opt/privacypi/scripts/doh-server.sh, \
+                                /opt/privacypi/scripts/tether-wan.sh, \
+                                /opt/privacypi/scripts/tls-bootstrap.sh, \
+                                /opt/privacypi/scripts/captive-portal.sh, \
+                                /opt/privacypi/scripts/dns-trap.sh, \
+                                /opt/privacypi/scripts/ntp-trap.sh, \
+                                /opt/privacypi/scripts/ap-harden.sh, \
+                                /opt/privacypi/scripts/master-key-write.sh, \
+                                /opt/privacypi/scripts/dns-tail.sh, \
+                                /opt/privacypi/scripts/mac-traffic.sh, \
+                                /opt/privacypi/scripts/onion-ssh.sh, \
+                                /opt/privacypi/scripts/wstunnel.sh, \
+                                /opt/privacypi/scripts/tor-circuits.sh, \
+                                /opt/privacypi/scripts/domain-router.py, \
+                                /opt/privacypi/scripts/alert-rules.py, \
+                                /opt/privacypi/scripts/daily-digest.sh, \
+                                /opt/privacypi/scripts/rotate-blocklists.sh, \
+                                /opt/privacypi/scripts/rotate-wg-psk.sh, \
+                                /bin/systemctl reload tor, \
+                                /bin/systemctl restart tor, \
+                                /bin/systemctl daemon-reload, \
+                                /bin/systemctl enable privacypi-doh, \
+                                /bin/systemctl disable privacypi-doh, \
+                                /bin/systemctl start privacypi-doh, \
+                                /bin/systemctl stop privacypi-doh, \
+                                /bin/systemctl restart privacypi-doh, \
+                                /bin/systemctl enable caddy, \
+                                /bin/systemctl disable caddy, \
+                                /bin/systemctl start caddy, \
+                                /bin/systemctl stop caddy, \
+                                /bin/systemctl restart caddy, \
+                                /bin/systemctl restart privacypi-flask
+Defaults:privacypi !requiretty

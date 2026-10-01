@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}Sign in · PrivacyPi{% endblock %}
+{% block content %}
+<h2>Sign in</h2>
+<div class="sub">Welcome back to your privacy router.</div>
+<form method="post" novalidate>
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+  <div class="field">
+    <label>Username</label>
+    <input name="username" autofocus required autocomplete="username">
+  </div>
+  <div class="field">
+    <label>Password</label>
+    <input type="password" name="password" required autocomplete="current-password">
+  </div>
+  <button class="btn btn-primary" type="submit" style="width:100%">Continue →</button>
+</form>
+{% endblock %}

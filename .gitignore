@@ -1,0 +1,18 @@
+
+# Playwright UI demo artifacts
+.playwright-mcp/
+*.png
+
+# Python build/test artifacts
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+.venv/
+
+# Local-only secrets and tool state
+CREDENTIALS.local.md
+*.local.md
+.env
+.claude/
+.DS_Store

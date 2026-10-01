@@ -1,0 +1,13 @@
+[Unit]
+Description=PrivacyPi base firewall
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/privacypi/scripts/firewall-base.sh
+ExecStartPost=/opt/privacypi/scripts/routing-vlan.sh
+RemainAfterExit=true
+
+[Install]
+WantedBy=multi-user.target

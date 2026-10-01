@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="auth-shell" style="position:fixed;inset:0">
+  <div class="auth-card" style="max-width:520px">
+    <div class="brand mb-4" style="border:none;padding:0;margin-bottom:8px">
+      <div class="lock">🔒</div>
+      <span>PrivacyPi setup</span>
+    </div>
+    <p class="text-xs text-muted mb-5">Step {% block step %}{% endblock %} of 5</p>
+    {% block wizard %}{% endblock %}
+  </div>
+</div>
+{% endblock %}
