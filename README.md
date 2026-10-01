@@ -1,107 +1,113 @@
 # PrivacyPi
 
-A privacy WiFi router on a Raspberry Pi. Devices join the `PrivacyPi` WiFi and get ad blocking,
-encrypted DNS, and one-click switching between **Direct, VPN (NordVPN, ExpressVPN, …), Tor, or
-proxy** routing — managed from a browser-based admin panel.
+Turn a Raspberry Pi into a private WiFi router. Every device that joins its WiFi gets ads and
+trackers blocked and DNS encrypted — and, if you want, all traffic sent through **your VPN
+(NordVPN, ExpressVPN, …)** or **Tor**. No apps to install on your phones, TVs or laptops.
 
-**Version:** v2.5.0 + portable installer (`install.sh`). **Current status and next steps:
-[`STATUS.md`](STATUS.md).**
+**Version 2.6.0 — pre-release.** Current state and open items: [`STATUS.md`](STATUS.md).
 
 ---
 
-## What it does
+## What you need
+
+- Raspberry Pi 4 or Pi 5, power supply, microSD card (8 GB or more)
+- A network cable from the Pi to your home router
+  *(or a USB WiFi adapter — then the Pi can join your home WiFi instead of using a cable)*
+
+## Set it up (about 5 minutes, no keyboard or screen on the Pi)
+
+1. **Download** `privacypi-<version>.img.xz`.
+2. **Flash** it to the SD card with [Raspberry Pi Imager](https://www.raspberrypi.com/software/)
+   (*Choose OS → Use custom*) or balenaEtcher. If Imager asks about customisation settings, choose **No**.
+3. **Insert** the card, plug in the network cable, **power on**. Wait about 2 minutes
+   (the first start takes longer).
+4. On your phone or laptop, join the WiFi **`PrivacyPi-Setup`** — password **`privacypi`**.
+5. The setup page opens by itself. If it doesn't, open **http://10.10.10.1** in a browser.
+6. Follow the four steps: dashboard password → internet → name your WiFi → privacy level.
+7. Join **your new WiFi**. Done — everything on it is protected.
+
+The dashboard is at **http://10.10.10.1** (or `http://privacypi.local`) while you are on your PrivacyPi WiFi.
+
+### Add your VPN
+
+Dashboard → **VPN providers**:
+
+- **NordVPN** — enter your *service credentials* (Nord Account → NordVPN → *Manual setup*; this is not
+  your email login), **Save**, pick a country or leave *Fastest*, **Connect**.
+- **ExpressVPN and others** — enter the *manual configuration* username/password from your provider's
+  website, upload the `.ovpn` (or WireGuard `.conf`) file for the server you want, **Connect**.
+
+If the VPN drops, devices lose internet instead of leaking; it reconnects by itself, also after a restart.
+
+### Locked out?
+
+Put the SD card in a computer and open the small `bootfs` drive:
+
+- `privacypi-config.txt` — remove the `#` in front of `reset=yes` to factory-reset on the next start.
+- `privacypi-status.txt` — a health report written on every start (no passwords in it). Attach it when asking for help.
+
+---
+
+## What's inside
 
 | Layer | What's running |
 |---|---|
-| 📡 **WiFi AP** | hostapd broadcasts SSID `PrivacyPi`; dnsmasq hands out DHCP |
-| 🌐 **Uplink (WAN)** | Ethernet or WiFi-client, chosen on the **Internet** page (`wan-config.sh`, auto-rollback to Ethernet if WiFi fails) |
-| 🌐 **DNS** | AdGuard Home (:53, ~891k filter rules) → Unbound recursive with DNSSEC; DNS/NTP traps stop clients bypassing it |
-| 🔐 **VPN** | OpenVPN + WireGuard. Provider slots for NordVPN, ExpressVPN, Mullvad, ProtonVPN, IVPN, Surfshark, AirVPN, plus custom. Auto-failover between servers |
-| 🧅 **Anonymity** | Tor (TransPort + DNSPort, bridges/pluggable transports, circuit viewer), I2P, Lokinet, Yggdrasil |
-| 🥷 **Proxies** | shadowsocks-rust, xray-core (VLESS/VMess/Trojan/Reality), tun2socks, wstunnel |
-| 🛡️ **Routing** | `route-mode.sh` atomically rewrites iptables per mode; per-mode kill switch; per-device and per-domain routing; leak prevention |
-| 🔒 **Hardening** | AppArmor, CrowdSec, auditd, SSH key-only, hardware watchdog, unattended security upgrades |
-| 💻 **Admin UI** | Flask behind Caddy (HTTPS on :443, Flask loopback-only on :8443). Password + TOTP / WebAuthn, CSRF, HMAC-chained audit log, BIP-39 recovery, first-boot wizard |
+| 📡 **WiFi** | hostapd. Radio roles are detected at every boot by capability, not adapter model (`net-roles.sh`): built-in radio alone = access point; add a USB adapter and the Pi can also join an upstream WiFi |
+| 🌐 **DNS** | AdGuard Home (blocklists) → Unbound (DNSSEC) → DNS-over-TLS upstream; clients cannot bypass it |
+| 🔐 **VPN** | OpenVPN + WireGuard clients (`vpn-connect.sh`), NordVPN server auto-selection, kill-switch by construction |
+| 🧅 **Tor** | Transparent Tor for all clients, bridges/pluggable transports |
+| 🥷 **Proxies** | shadowsocks-rust, xray-core, tun2socks |
+| 🛡️ **Firewall** | Dashboard, DNS and admin ports reachable from the PrivacyPi WiFi only; upstream network sees nothing |
+| 💻 **Dashboard** | Flask behind Caddy — plain HTTP on the PrivacyPi WiFi (no certificate warning) and HTTPS for devices that install the root certificate. Optional two-step login |
+| 🧩 **Extras** | I2P, Yggdrasil, Lokinet — installed on demand from the dashboard, not in the image |
 
+No secrets are baked into the image: keys and passwords are generated on each device's first boot
+(`boot-init.sh` → `provision.sh`).
+
+## Building the image
+
+```bash
+./build-image.sh        # needs only Docker → build/privacypi-<version>.img.xz
 ```
-route-mode.sh {direct|openvpn|wireguard|tor|proxy|killswitch}
+
+It downloads the official Raspberry Pi OS Lite (64-bit) image, verifies its checksum and installs
+PrivacyPi into it inside a container (`install.sh` in image-build mode).
+
+## Testing without hardware
+
+```bash
+tests/e2e.sh            # boots the installed system in a container and plays a WiFi client through
+                        # first boot → captive portal → wizard → internet → dashboard → VPN → Tor → reset
 ```
 
----
+Everything except the radio itself is covered. `tests/test-net-roles.sh` covers radio-role detection
+with simulated adapters.
 
-## Install (fresh Pi)
+## Developer install (on a running Pi)
 
-1. Flash **Ubuntu Server 24.04 LTS (64-bit)** to the SD card ([runbook](docs/ops/plan-01-runbook.md)).
-2. Boot with Ethernet connected and a USB WiFi adapter for the access point.
-3. On the Pi:
-   ```bash
-   git clone <this-repo> privacypi && cd privacypi
-   sudo bash install.sh        # idempotent — re-run to re-apply config
-   sudo reboot
-   ```
-4. Join the `PrivacyPi` WiFi (passphrase: `sudo cat /etc/privacypi/wifi-psk.txt`).
-5. Open `https://privacypi.local/` and complete the wizard (admin password, TOTP, profile).
+```bash
+git clone <this-repo> privacypi && cd privacypi
+sudo bash install.sh && sudo reboot
+```
 
-All host-specific values (interfaces, subnets, IPs) live in `/etc/privacypi/site.conf`, generated by
-the installer — nothing is hard-coded to one Pi.
-
----
+For SSH on an image-flashed device, set `ssh_password=…` in `privacypi-config.txt` (user `pi`).
 
 ## Repo layout
 
 ```
-.
-├── README.md            ← this file
-├── STATUS.md            ← current status + on-Pi bring-up checklist
-├── install.sh           ← one-command installer (run on the Pi)
-├── app/                 ← Flask admin app (deployed to /opt/privacypi/app)
-├── opt/privacypi/scripts/   ← privileged helpers (route-mode, wan-config, vpn-*, tor-*, …)
-│   └── lib/site.sh      ← reads /etc/privacypi/site.conf
-├── system/              ← config files mirrored onto the Pi (hostapd, dnsmasq, unbound, caddy, systemd, sudoers, …)
-├── scripts/             ← Mac-side deploy (00–11) + verify-*.sh health checks
-└── docs/
-    ├── superpowers/     ← original spec + implementation plans
-    ├── ops/             ← runbooks
-    ├── screenshots/
-    └── history/         ← May 2026 build logs (TRACKER, handoffs) — historical only
+install.sh               installer (image-build mode + developer mode)
+build-image.sh, tools/   image build
+app/                     Flask dashboard + setup wizard
+opt/privacypi/scripts/   privileged helpers (route-mode, vpn-connect, net-roles, ap-config, …)
+system/                  config files and systemd units deployed to the device
+tests/                   hardware-free tests
+docs/                    original spec, plans, May 2026 build history
 ```
-
----
-
-## Verification
-
-Run from your Mac (Pi IP in `~/.privacypi-host`, SSH key installed):
-
-```bash
-export PRIVACYPI_ADMIN_PASS='…'      # admin UI password
-export PRIVACYPI_TOTP_SECRET='…'     # admin TOTP base32 secret
-./scripts/verify-all.sh              # comprehensive health check
-./scripts/verify-<area>.sh           # or one area: foundation, network, dns, vpn, anonymity, …
-```
-
-Credentials are never committed. Keep local ones in `CREDENTIALS.local.md` (gitignored).
-
----
-
-## Hardware notes
-
-Both tested USB WiFi adapters (rtl8192cu, brcmfmac) support only **one AP SSID** each, so PrivacyPi
-uses a single SSID with per-device (MAC) routing overrides. Multiple SSIDs need an adapter
-reporting `#{ AP } <= 4` or more in `iw list`.
-
-## Deferred
-
-| Item | Note |
-|---|---|
-| Handshake (hnsd) DNS | Needs build from source |
-| DPI bypass (GoodbyeDPI / zapret) | Not needed on most ISPs |
-| Split tunnelling | Deferred from Megaplan C |
-| WAN choice in first-boot wizard | Available on the Internet page today |
 
 ## Threat model
 
-**Protects against:** ISP surveillance, DNS snooping, ad/tracker profiling, DPI/censorship, malware C2
-(DNS blocklists), local-network attackers (2FA + CrowdSec), phishing.
+**Protects against:** ISP surveillance, DNS snooping, ad/tracker profiling, censorship, malware C2
+(DNS blocklists), untrusted upstream networks (hotel/café WiFi).
 
-**Does not protect against:** compromised endpoints, browser fingerprinting, a malicious VPN provider,
-physical/hardware attacks, legal compulsion.
+**Does not protect against:** compromised devices, browser fingerprinting, a malicious VPN provider,
+physical access to the Pi, legal compulsion.

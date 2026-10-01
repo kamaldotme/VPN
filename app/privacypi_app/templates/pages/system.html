@@ -93,11 +93,34 @@ document.getElementById('upd-apply').addEventListener('click', async () => {
   <form id="pwf">
     <div class="grid grid-3">
       <div class="field"><label>Current</label><input type="password" name="current"></div>
-      <div class="field"><label>New (≥12)</label><input type="password" name="new"></div>
+      <div class="field"><label>New (8+ characters)</label><input type="password" name="new"></div>
       <div class="field"><label>Confirm</label><input type="password" name="new2"></div>
     </div>
     <button class="btn btn-primary">Change password</button>
   </form>
+</div>
+
+<div class="card mb-4">
+  <p class="card-title">🔑 Two-step login (optional)</p>
+  <p class="text-sm text-muted">Ask for a 6-digit code from an authenticator app (Google Authenticator, Authy, 1Password…) when signing in to this dashboard.</p>
+  <div id="tfa-off" style="display:none">
+    <button class="btn mt-3" id="tfa-begin">Turn on</button>
+    <div id="tfa-setup" style="display:none" class="mt-3">
+      <img id="tfa-qr" alt="QR code" style="width:180px;height:180px;background:#fff;padding:6px;border-radius:8px">
+      <p class="text-xs text-muted mt-2">Scan with your app, or type this key: <code id="tfa-secret"></code></p>
+      <div class="flex gap-2 mt-2" style="max-width:320px">
+        <input id="tfa-code" inputmode="numeric" maxlength="6" placeholder="6-digit code" style="flex:1">
+        <button class="btn btn-primary" id="tfa-enable">Confirm</button>
+      </div>
+    </div>
+  </div>
+  <div id="tfa-on" style="display:none">
+    <p class="text-sm mt-3"><strong class="text-accent">✓ On</strong></p>
+    <div class="flex gap-2 mt-2" style="max-width:360px">
+      <input id="tfa-pw" type="password" placeholder="Dashboard password" style="flex:1">
+      <button class="btn" id="tfa-disable">Turn off</button>
+    </div>
+  </div>
 </div>
 
 <div class="card" style="border-color:rgba(248,113,113,0.3)">
@@ -111,6 +134,31 @@ document.getElementById('upd-apply').addEventListener('click', async () => {
 </div>
 
 <script>
+async function tfaRefresh() {
+  const d = await (await fetch('/api/2fa')).json();
+  document.getElementById('tfa-on').style.display = d.enabled ? '' : 'none';
+  document.getElementById('tfa-off').style.display = d.enabled ? 'none' : '';
+}
+tfaRefresh();
+document.getElementById('tfa-begin').addEventListener('click', async () => {
+  const d = await (await fetch('/api/2fa/begin', {method: 'POST', headers: csrfHeaders()})).json();
+  document.getElementById('tfa-qr').src = 'data:image/png;base64,' + d.qr;
+  document.getElementById('tfa-secret').textContent = d.secret;
+  document.getElementById('tfa-setup').style.display = '';
+});
+document.getElementById('tfa-enable').addEventListener('click', async () => {
+  const fd = new FormData(); fd.append('code', document.getElementById('tfa-code').value);
+  const d = await (await fetch('/api/2fa/enable', {method: 'POST', body: fd, headers: csrfHeaders()})).json();
+  window.toast(d.ok ? 'Two-step login is on' : (d.error || 'Failed'), d.ok ? 'ok' : 'danger');
+  if (d.ok) { document.getElementById('tfa-setup').style.display = 'none'; tfaRefresh(); }
+});
+document.getElementById('tfa-disable').addEventListener('click', async () => {
+  const fd = new FormData(); fd.append('password', document.getElementById('tfa-pw').value);
+  const d = await (await fetch('/api/2fa/disable', {method: 'POST', body: fd, headers: csrfHeaders()})).json();
+  window.toast(d.ok ? 'Two-step login is off' : (d.error || 'Failed'), d.ok ? 'ok' : 'danger');
+  if (d.ok) tfaRefresh();
+});
+
 document.getElementById('pwf').addEventListener('submit', async e => {
   e.preventDefault();
   const fd = new FormData(e.target);
@@ -119,7 +167,10 @@ document.getElementById('pwf').addEventListener('submit', async e => {
   window.toast(d.ok ? 'Password changed' : (d.error || 'Failed'), d.ok ? 'ok' : 'danger');
 });
 document.querySelectorAll('.sys-act').forEach(b => b.addEventListener('click', async () => {
-  if (!confirm(`Confirm: ${b.dataset.act}?`)) return;
+  const warn = b.dataset.act === 'factory-reset'
+    ? 'Factory reset erases ALL settings, passwords and VPN accounts and restarts PrivacyPi into first-time setup (WiFi "PrivacyPi-Setup"). Continue?'
+    : `Confirm: ${b.dataset.act}?`;
+  if (!confirm(warn)) return;
   const r = await fetch(`/api/system/${b.dataset.act}`, {method:'POST', headers: csrfHeaders()});
   const d = await r.json();
   window.toast(d.ok ? `${b.dataset.act} initiated` : 'Failed', d.ok ? 'ok' : 'danger');

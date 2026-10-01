@@ -1,0 +1,20 @@
+# End-to-end test image: Debian 13 + systemd + PrivacyPi installed exactly as
+# build-image.sh installs it into the Raspberry Pi OS image (image-build mode:
+# no secrets, nothing started). Booted by tests/e2e.sh with systemd as PID 1.
+FROM debian:trixie
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends \
+      systemd systemd-sysv dbus udev kmod iproute2 procps curl ca-certificates busybox-static less \
+    && rm -f /usr/sbin/policy-rc.d
+COPY . /src
+RUN cd /src && PRIVACYPI_IMAGE_BUILD=1 bash install.sh \
+    || { tail -40 /var/log/privacypi-install.log; exit 1; }
+# Docker owns eth0's address; keep networkd's DHCP away from it. Simulate a
+# never-booted image (first-boot semantics) with an uninitialised machine-id.
+RUN printf '[Match]\nName=eth0\n\n[Link]\nUnmanaged=yes\n' > /etc/systemd/network/10-test-eth0.network \
+    && echo uninitialized > /etc/machine-id \
+    && mkdir -p /etc/systemd/system/privacypi-init.service.d \
+    && printf '[Service]\nEnvironment=NET_ROLES_WAIT=1\n' > /etc/systemd/system/privacypi-init.service.d/test.conf \
+    && systemctl mask systemd-udev-settle.service getty@tty1.service console-getty.service >/dev/null 2>&1
+STOPSIGNAL SIGRTMIN+3
+CMD ["/sbin/init"]

@@ -3,17 +3,14 @@
 # Usage:
 #   system-action.sh reboot
 #   system-action.sh restart-flask
-#   system-action.sh factory-reset    # nuclear: wipe DB and provider creds
+#   system-action.sh factory-reset    # wipe everything, reboot into the setup wizard
 set -euo pipefail
 case "${1:-}" in
   reboot) shutdown -r +1 "PrivacyPi reboot from UI" ;;
   restart-flask) systemctl restart privacypi-flask.service ;;
   factory-reset)
-    rm -f /var/lib/privacypi/privacypi.db
-    rm -f /etc/privacypi/vpn/*/auth.txt
-    rm -f /etc/privacypi/vpn/*/current.ovpn
-    rm -rf /etc/privacypi/vpn/*/servers/*.ovpn
-    systemctl restart privacypi-flask.service
+    # Full wipe back to the out-of-box state, then reboot into the setup wizard.
+    systemd-run --quiet --collect --on-active=2 /opt/privacypi/scripts/factory-reset.sh --reboot
     ;;
   *) echo "unknown action" >&2; exit 2 ;;
 esac

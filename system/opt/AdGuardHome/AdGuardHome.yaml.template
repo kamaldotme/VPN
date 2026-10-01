@@ -1,35 +1,42 @@
-# Seeded by install.sh. Uses the long-stable field layout with a low
-# schema_version so AdGuard Home migrates it forward on first start (safe) —
-# never the other way. __LAN_GW__ and __ADMIN_HASH__ are substituted at install.
-bind_host: 0.0.0.0
-bind_port: 3000
+# Seeded by provision.sh on first boot (placeholders are substituted there).
+# Written at the current schema so AdGuard Home starts without a migration;
+# any key left out here gets AdGuard Home's default.
+http:
+  address: 0.0.0.0:3000
+  session_ttl: 720h
 users:
   - name: admin
     password: __ADMIN_HASH__
 language: en
-http_proxy: ""
 theme: auto
 dns:
   bind_hosts:
     - 127.0.0.1
     - __LAN_GW__
   port: 53
-  # Recurse through the local Unbound resolver (DNSSEC-validating).
+  # Recurse through the local Unbound resolver (DNSSEC-validating, DNS-over-TLS upstream).
   upstream_dns:
     - 127.0.0.1:5335
   bootstrap_dns:
     - 127.0.0.1:5335
   upstream_mode: load_balance
-  enable_dnssec: true
   ratelimit: 0
   refuse_any: true
+  enable_dnssec: true
+  # The PrivacyPi WiFi is IPv4-only (IPv6 forwarding is blocked to prevent
+  # leaks around VPN/Tor), so IPv6 answers would only slow clients down.
+  aaaa_disabled: true
+  cache_size: 4194304
   edns_client_subnet:
     enabled: false
-filtering:
-  filtering_enabled: true
-  parental_enabled: false
-  safebrowsing_enabled: false
-  protection_enabled: true
+querylog:
+  # Keep the per-device query history short — this is a privacy router.
+  interval: 24h
+  enabled: true
+  file_enabled: true
+statistics:
+  interval: 24h
+  enabled: true
 filters:
   - enabled: true
     url: https://adguardteam.github.io/HostlistsRegistry/assets/filter_1.txt
@@ -39,12 +46,28 @@ filters:
     url: https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts
     name: StevenBlack hosts
     id: 2
+filtering:
+  filtering_enabled: true
+  protection_enabled: true
+  rewrites_enabled: true
+  parental_enabled: false
+  safebrowsing_enabled: false
+  safe_search:
+    enabled: false
+  filters_update_interval: 24
+  # The dashboard's names, for devices that do not speak mDNS.
+  rewrites:
+    - domain: privacypi.local
+      answer: __LAN_GW__
+      enabled: true
+    - domain: privacypi.lan
+      answer: __LAN_GW__
+      enabled: true
 clients:
   runtime_sources:
-    whois: true
+    whois: false
     arp: true
     rdns: true
     dhcp: true
-log_file: ""
-verbose: false
-schema_version: 14
+    hosts: true
+schema_version: 34

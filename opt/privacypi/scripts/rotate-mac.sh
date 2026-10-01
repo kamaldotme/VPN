@@ -5,11 +5,16 @@
 # kill internet for every connected client — so we skip it in that case.
 set -uo pipefail
 source /opt/privacypi/scripts/lib/site.sh 2>/dev/null || true
-IFACE="${1:-${WIFI_WAN_IFACE:-wlan0}}"
+IFACE="${1:-${WIFI_WAN_IFACE:-}}"
 LOG=/var/log/privacypi/mac-rotate.log
 mkdir -p "$(dirname "$LOG")"
 
-if [[ "${WAN_MODE:-ethernet}" == "wifi" && "$IFACE" == "${WIFI_WAN_IFACE:-wlan0}" ]]; then
+# Never touch the AP radio either — a MAC change there disconnects every client.
+if [[ -z "$IFACE" || "$IFACE" == "${AP_IFACE:-}" ]]; then
+  echo "$(date -Iseconds) skipped MAC rotation (no spare radio; ${IFACE:-none} is the AP)" >> "$LOG"
+  exit 0
+fi
+if [[ "${WAN_MODE:-ethernet}" == "wifi" && "$IFACE" == "${WIFI_WAN_IFACE:-}" ]]; then
   echo "$(date -Iseconds) skipped MAC rotation on $IFACE (active WiFi WAN)" >> "$LOG"
   exit 0
 fi

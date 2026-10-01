@@ -1,5 +1,5 @@
 # PrivacyPi site-specific configuration.
-# install.sh writes this from probed values; edit only if defaults are wrong.
+# install.sh creates this; net-roles.sh keeps the interface roles current.
 #
 # After editing: sudo systemctl restart caddy privacypi-flask hostapd
 
@@ -7,15 +7,28 @@
 # WAN_MODE: ethernet (wired ETH_IFACE) or wifi (WIFI_WAN_IFACE as a client).
 # Change this from the admin UI (Network page) — it is rewritten by wan-config.sh.
 WAN_MODE=ethernet
-ETH_IFACE=eth0          # wired uplink (probed by install.sh)
-WIFI_WAN_IFACE=wlan0    # built-in radio used as a WiFi client when WAN_MODE=wifi
+# Interface roles are detected at every boot by net-roles.sh (by capability,
+# not adapter model). Set ROLE_LOCK=1 to pin the values below instead.
+ROLE_LOCK=0
+ETH_IFACE=eth0          # wired uplink
+WIFI_WAN_IFACE=         # spare radio used as a WiFi client; empty with a single radio
 WAN_WIFI_SSID=          # upstream SSID when WAN_MODE=wifi (PSK lives in wpa_supplicant, not here)
 # WAN_IFACE is normally derived from WAN_MODE; set it only to force a specific
 # interface. Leave commented to let lib/site.sh pick ETH_IFACE / WIFI_WAN_IFACE.
 #WAN_IFACE=eth0
 
-# AP interface — the radio that client devices connect to (Edimax USB)
-AP_IFACE=wlan1
+# AP interface — the radio that client devices connect to
+AP_IFACE=wlan0
+# WiFi regulatory domain (ISO country code) for the AP and the WiFi-WAN client
+WIFI_COUNTRY=US
+AP_CHANNEL=6            # 2.4 GHz channel for the PrivacyPi network
+# Network name. "PrivacyPi-Setup" (password: privacypi) is the out-of-box setup
+# network; the wizard replaces both. The password lives in wifi-psk.txt.
+AP_SSID="PrivacyPi-Setup"
+AP_HARDEN=0             # 1 = WPA3/MFP where the radio supports it
+# 1 = admin dashboard also reachable from the upstream (WAN) network. Leave 0
+# unless you trust that network.
+ADMIN_ON_WAN=0
 
 # LAN bridge subnet (devices joining the WiFi)
 LAN_BRIDGE=br-vlan10
@@ -30,7 +43,7 @@ WG_PORT=51820
 # Public-facing names — what clients use to reach the dashboard.
 # Both are added as SANs on the internal-CA cert.
 HOST_MDNS=privacypi.local
-HOST_IP=                    # filled by install.sh from $WAN_IFACE
+HOST_IP=                    # optional WAN-side address; empty = derived at runtime
 
 # Tor port assignments (defaults are fine; change only if conflicts)
 TOR_TRANS_PORT=9040

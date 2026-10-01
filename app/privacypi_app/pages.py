@@ -304,6 +304,16 @@ def recovery_restore():
 def set_mode(mode):
     if mode not in current_app.config["ALLOWED_MODES"]:
         abort(400, "invalid mode")
+    if mode in ("openvpn", "wireguard"):
+        # A VPN mode needs a tunnel: reconnect the provider used last.
+        last = db.session.get(Setting, "vpn_last_provider")
+        if not last or not last.value:
+            return jsonify({"ok": False, "stderr": "Set up a VPN first: open VPN providers, add your account and press Connect."}), 400
+        rc, out, err = run_script("vpn-connect", ["up", last.value], timeout=80)
+        res = _script_json(out, err)
+        _audit(f"mode.{mode}", detail=(out + err)[:500])
+        return jsonify({"ok": bool(res.get("ok")), "stdout": out, "stderr": res.get("error", err)})
+    run_script("vpn-connect", ["stop-tunnels"], timeout=30)
     rc, out, err = run_script("route-mode", [mode])
     _audit(f"mode.{mode}", detail=(out + err)[:500])
     return jsonify({"ok": rc == 0, "stdout": out, "stderr": err})
@@ -373,7 +383,7 @@ def change_password():
     new2 = request.form.get("new2","")
     if not bcrypt.checkpw(cur.encode(), current_user.password_hash.encode()):
         return jsonify({"ok": False, "error": "current password wrong"}), 400
-    if new != new2 or len(new) < 12:
+    if new != new2 or len(new) < 8:
         return jsonify({"ok": False, "error": "new passwords mismatch or too short (≥12)"}), 400
     current_user.password_hash = bcrypt.hashpw(new.encode(), bcrypt.gensalt()).decode()
     db.session.commit()
@@ -469,10 +479,14 @@ def device_set_mode(mac, mode):
 @bp.get("/api/bandwidth")
 @login_required
 def bandwidth():
-    """Return vnstat JSON for br-vlan10 and wlan1."""
+    """Return vnstat JSON for the LAN bridge, the AP radio and the wired uplink."""
     import subprocess as sp
+    from .services.site import read_site_conf
+    site = read_site_conf()
     out = {}
-    for iface in ("br-vlan10", "wlan1", "eth0"):
+    for iface in (site.get("LAN_BRIDGE", "br-vlan10"), site.get("AP_IFACE", ""), site.get("ETH_IFACE", "eth0")):
+        if not iface:
+            continue
         try:
             p = sp.run(["vnstat", "-i", iface, "--json"], capture_output=True, text=True, timeout=5)
             out[iface] = json.loads(p.stdout) if p.returncode == 0 else {"error": p.stderr.strip()}
@@ -1394,3 +1408,175 @@ def tether_switch():
         result = {"ok": rc == 0, "raw": (out + err)[:300]}
     _audit("tether.switch", target)
     return jsonify(result)
+
+
+# ====== VPN connect / disconnect ======
+VPN_PROVIDERS = ("nordvpn", "expressvpn", "mullvad", "protonvpn", "ivpn",
+                 "surfshark", "airvpn", "custom-ovpn", "custom-wg")
+
+def _remember_vpn(provider):
+    row = db.session.get(Setting, "vpn_last_provider")
+    if row is None:
+        db.session.add(Setting(key="vpn_last_provider", value=provider))
+    else:
+        row.value = provider
+    db.session.commit()
+
+@bp.get("/api/vpn/state")
+@login_required
+def vpn_state():
+    rc, out, err = run_script("vpn-connect", ["status"])
+    return jsonify(_script_json(out, err))
+
+@bp.get("/api/vpn/nord/countries")
+@login_required
+def vpn_nord_countries():
+    rc, out, err = run_script("vpn-connect", ["nord-countries"], timeout=25)
+    return jsonify(_script_json(out, err))
+
+@bp.post("/api/vpn/<provider>/connect")
+@login_required
+def vpn_connect(provider):
+    if provider not in VPN_PROVIDERS:
+        abort(400)
+    country = (request.form.get("country") or "").strip()
+    if provider == "nordvpn" and request.form.get("auto", "1") == "1":
+        if country and not country.isdigit():
+            return jsonify({"ok": False, "error": "bad country"}), 400
+        rc, out, err = run_script("vpn-connect", ["nord"] + ([country] if country else []), timeout=90)
+    else:
+        rc, out, err = run_script("vpn-connect", ["up", provider], timeout=80)
+    res = _script_json(out, err)
+    if res.get("ok"):
+        _remember_vpn(provider)
+    _audit(f"vpn.connect.{provider}", "ok" if res.get("ok") else str(res.get("error"))[:200])
+    return jsonify(res)
+
+@bp.post("/api/vpn/disconnect")
+@login_required
+def vpn_disconnect():
+    rc, out, err = run_script("vpn-connect", ["down"], timeout=40)
+    _audit("vpn.disconnect")
+    return jsonify(_script_json(out, err))
+
+
+# ====== The PrivacyPi WiFi network (name / password / country) ======
+import re as _re_ap
+
+@bp.get("/api/ap")
+@login_required
+def ap_status():
+    rc, out, err = run_script("ap-config", ["status"])
+    return jsonify(_script_json(out, err))
+
+@bp.post("/api/ap")
+@login_required
+def ap_set():
+    ssid = (request.form.get("ssid") or "").strip()
+    psk = request.form.get("psk") or ""
+    if not _re_ap.match(r"^[A-Za-z0-9 _.\-]{1,32}$", ssid):
+        return jsonify({"ok": False, "error": "WiFi name: 1-32 characters — letters, numbers, spaces, dot, dash or underscore"}), 400
+    if not (8 <= len(psk) <= 63) or not all(0x20 <= ord(c) < 0x7f for c in psk):
+        return jsonify({"ok": False, "error": "WiFi password must be 8-63 characters"}), 400
+    # --defer: the WiFi restarts a few seconds after this response is sent.
+    rc, out, err = run_script("ap-config", ["set", ssid, "-", "--defer"], stdin=psk)
+    _audit("ap.set", ssid)
+    return jsonify(_script_json(out, err))
+
+
+# ====== Optional two-step login (authenticator app) ======
+@bp.get("/api/2fa")
+@login_required
+def twofa_status():
+    return jsonify({"ok": True, "enabled": bool(current_user.totp_enabled)})
+
+@bp.post("/api/2fa/begin")
+@login_required
+def twofa_begin():
+    import pyotp, qrcode
+    from io import BytesIO
+    from flask import session
+    secret = pyotp.random_base32()
+    session["pending_totp"] = secret
+    uri = pyotp.TOTP(secret).provisioning_uri(name=current_user.username, issuer_name="PrivacyPi")
+    buf = BytesIO()
+    qrcode.make(uri).save(buf, format="PNG")
+    return jsonify({"ok": True, "secret": secret, "qr": b64encode(buf.getvalue()).decode()})
+
+@bp.post("/api/2fa/enable")
+@login_required
+def twofa_enable():
+    import pyotp
+    from flask import session
+    secret = session.get("pending_totp")
+    code = (request.form.get("code") or "").strip()
+    if not secret or not pyotp.TOTP(secret).verify(code, valid_window=1):
+        return jsonify({"ok": False, "error": "That code is not right — check the app and the Pi's clock."}), 400
+    current_user.totp_secret = secret
+    current_user.totp_enabled = True
+    db.session.commit()
+    session.pop("pending_totp", None)
+    _audit("2fa.enable")
+    return jsonify({"ok": True})
+
+@bp.post("/api/2fa/disable")
+@login_required
+def twofa_disable():
+    if not bcrypt.checkpw((request.form.get("password") or "").encode(), current_user.password_hash.encode()):
+        return jsonify({"ok": False, "error": "password wrong"}), 400
+    current_user.totp_enabled = False
+    current_user.totp_secret = None
+    db.session.commit()
+    _audit("2fa.disable")
+    return jsonify({"ok": True})
+
+
+# ====== Extras (optional networks installed on demand) ======
+EXTRAS = {
+    "i2p": {
+        "name": "I2P",
+        "icon": "🕸️",
+        "summary": "Anonymous network for .i2p sites.",
+        "howto": "After installing, set your browser's HTTP proxy to {gw} port 4444 to open .i2p sites.",
+    },
+    "yggdrasil": {
+        "name": "Yggdrasil",
+        "icon": "🌳",
+        "summary": "Experimental encrypted mesh network (gives the Pi an address on the mesh).",
+        "howto": "For people who already use Yggdrasil — add peers in /etc/yggdrasil/yggdrasil.conf.",
+    },
+    "lokinet": {
+        "name": "Lokinet",
+        "icon": "🔗",
+        "summary": "Onion-routed network for .loki sites. Experimental on this OS.",
+        "howto": "Experimental: the package may not be available for every OS release.",
+    },
+}
+
+@bp.get("/extras")
+@login_required
+def extras_page():
+    return render_template("pages/extras.html", extras=EXTRAS)
+
+@bp.get("/api/extras")
+@login_required
+def extras_status():
+    rc, out, err = run_script("extras", ["status"])
+    return jsonify(_script_json(out, err))
+
+@bp.post("/api/extras/<name>/<action>")
+@login_required
+def extras_action(name, action):
+    if name not in EXTRAS or action not in ("install", "remove"):
+        abort(400)
+    rc, out, err = run_script("extras", [action, name])
+    _audit(f"extras.{action}", name)
+    return jsonify(_script_json(out, err))
+
+@bp.get("/api/extras/<name>/log")
+@login_required
+def extras_log(name):
+    if name not in EXTRAS:
+        abort(400)
+    rc, out, err = run_script("extras", ["log", name])
+    return jsonify({"ok": True, "log": out[-3000:]})

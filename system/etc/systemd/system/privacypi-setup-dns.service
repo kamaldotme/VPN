@@ -1,0 +1,9 @@
+[Unit]
+Description=PrivacyPi captive DNS for the setup network
+ConditionPathExists=!/etc/privacypi/setup-complete
+
+[Service]
+Type=simple
+ExecStart=/opt/privacypi/scripts/setup-mode.sh dns
+Restart=on-failure
+RestartSec=3

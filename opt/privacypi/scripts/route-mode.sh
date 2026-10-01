@@ -64,8 +64,11 @@ case "$MODE" in
   tor)
     # Redirect all TCP from clients to Tor's TransPort
     OUT_IF="tor"
-    iptables -t nat -A PREROUTING -i "$LAN_BRIDGE" -p tcp --syn -j REDIRECT --to-ports "$TOR_TRANS_PORT"
-    iptables -t nat -A PREROUTING -i "$LAN_BRIDGE" -p udp --dport 53 -j REDIRECT --to-ports "$TOR_DNS_PORT"
+    # ...except traffic to the Pi itself: the dashboard must stay reachable.
+    iptables -t nat -A PREROUTING -i "$LAN_BRIDGE" -p tcp --syn ! -d "$LAN_GW" -j REDIRECT --to-ports "$TOR_TRANS_PORT"
+    # All client DNS resolves through Tor — inserted first so it wins over the
+    # generic "force DNS to the Pi" rule above (which would resolve outside Tor).
+    iptables -t nat -I PREROUTING 1 -i "$LAN_BRIDGE" -p udp --dport 53 -j REDIRECT --to-ports "$TOR_DNS_PORT"
     # Accept local Tor connections
     iptables -A "$FWD_CHAIN" -d 127.0.0.1 -j ACCEPT
     iptables -A "$FWD_CHAIN" -j REJECT --reject-with icmp-net-unreachable
@@ -120,6 +123,24 @@ if [[ -n "$GW" && "$MODE" != "killswitch" ]]; then
     *)         ip route add default via "$GW" dev "$OUT_IF" table 100 ;;
   esac
 fi
+
+# Upstream DNS for the Pi's resolver. Encrypted (DNS-over-TLS) whenever queries
+# leave over the plain uplink; inside a VPN tunnel plain :53 is used because
+# some providers (NordVPN) block port 853 and the tunnel already encrypts it.
+FWD_SRC=/opt/privacypi/system/etc/privacypi
+FWD_DST=/etc/unbound/unbound.conf.d/privacypi-forward.conf
+case "$MODE" in
+  openvpn|wireguard) FWD_WANT="$FWD_SRC/unbound-forward-plain.conf" ;;
+  *)                 FWD_WANT="$FWD_SRC/unbound-forward-dot.conf" ;;
+esac
+if [[ -f "$FWD_WANT" ]] && ! cmp -s "$FWD_WANT" "$FWD_DST" 2>/dev/null; then
+  install -m 644 "$FWD_WANT" "$FWD_DST" 2>/dev/null \
+    && { systemctl restart unbound 2>/dev/null || true; }   # restart, not reload: a reload does not
+                                                            # load the TLS certificate bundle (verified in tests/e2e.sh)
+fi
+
+# Until the setup wizard is finished the setup network must stay captive.
+/opt/privacypi/scripts/setup-mode.sh rules 2>/dev/null || true
 
 # Persist state
 mkdir -p "$(dirname "$STATE_FILE")" "$(dirname "$LOG")"

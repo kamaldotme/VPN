@@ -3,6 +3,6 @@
 set -euo pipefail
 MAC_SPOOF="${MAC_SPOOF:-no}"
 if [[ "$MAC_SPOOF" == "yes" ]] && command -v macchanger >/dev/null; then
-  macchanger -r wlan0 2>&1 | tail -2 || true
+  /opt/privacypi/scripts/rotate-mac.sh || true
 fi
 echo "vpn-pre-up done at $(date -Iseconds)" >> /var/log/privacypi/vpn-hooks.log

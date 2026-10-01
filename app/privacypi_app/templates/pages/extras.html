@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block heading %}Extras{% endblock %}
+{% block subheading %}Optional networks, installed only if you want them. Needs an internet connection.{% endblock %}
+{% block content %}
+<div class="grid-auto">
+  {% for key, x in extras.items() %}
+  <div class="tile" data-extra="{{ key }}">
+    <div class="tile-head">
+      <div class="avatar">{{ x.icon }}</div>
+      <div style="flex:1">
+        <div class="tile-name">{{ x.name }}</div>
+        <div class="tile-meta">{{ x.summary }}</div>
+      </div>
+      <span class="badge x-state">…</span>
+    </div>
+    <p class="text-xs text-muted">{{ x.howto.format(gw=lan_gw) }}</p>
+    <div class="flex gap-2 mt-3">
+      <button class="btn btn-primary btn-sm x-install">Install</button>
+      <button class="btn btn-sm x-remove" style="display:none">Remove</button>
+    </div>
+    <pre class="x-log text-xs mt-3" style="display:none;max-height:140px;overflow:auto;margin:0"></pre>
+  </div>
+  {% endfor %}
+</div>
+<script>
+async function xRefresh() {
+  try {
+    const d = await (await fetch('/api/extras')).json();
+    for (const tile of document.querySelectorAll('[data-extra]')) {
+      const s = (d.extras || {})[tile.dataset.extra]; if (!s) continue;
+      const b = tile.querySelector('.x-state'), log = tile.querySelector('.x-log');
+      b.textContent = s.busy ? 'working…' : s.installed ? (s.active === 'active' ? 'running' : 'installed') : 'not installed';
+      b.className = 'badge x-state ' + (s.installed && !s.busy ? 'ok' : '');
+      tile.querySelector('.x-install').style.display = (s.installed || s.busy) ? 'none' : '';
+      tile.querySelector('.x-remove').style.display = (s.installed && !s.busy) ? '' : 'none';
+      if (s.busy || log.dataset.show) {
+        const l = await (await fetch(`/api/extras/${tile.dataset.extra}/log`)).json();
+        log.style.display = ''; log.textContent = l.log || ''; log.scrollTop = log.scrollHeight;
+      }
+    }
+  } catch (e) {}
+}
+document.querySelectorAll('[data-extra]').forEach(tile => {
+  for (const act of ['install', 'remove']) {
+    tile.querySelector('.x-' + act).addEventListener('click', async () => {
+      if (act === 'remove' && !confirm('Remove ' + tile.dataset.extra + '?')) return;
+      tile.querySelector('.x-log').dataset.show = '1';
+      const d = await (await fetch(`/api/extras/${tile.dataset.extra}/${act}`, {method: 'POST', headers: csrfHeaders()})).json();
+      window.toast(d.ok ? (act === 'install' ? 'Installing — this takes a few minutes' : 'Removing…') : (d.error || 'Failed'), d.ok ? 'ok' : 'danger');
+      xRefresh();
+    });
+  }
+});
+xRefresh(); setInterval(xRefresh, 4000);
+</script>
+{% endblock %}

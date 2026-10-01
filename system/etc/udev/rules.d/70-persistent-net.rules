@@ -1,2 +1,0 @@
-# Rename Edimax USB WiFi to wlan1 by MAC
-SUBSYSTEM=="net", ACTION=="add", ATTR{address}=="74:da:38:f0:21:ad", NAME="wlan1"

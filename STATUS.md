@@ -1,37 +1,57 @@
 # PrivacyPi — Status
 
-One privacy router on a Raspberry Pi. Devices join the `PrivacyPi` WiFi (Edimax `wlan1`); the Pi
-reaches the internet by **Ethernet or WiFi** (chosen in the admin app) and routes traffic through
-**Direct / VPN / Tor / Proxy / Killswitch**, with ad-blocking encrypted DNS. Install with
-`sudo bash install.sh` on a fresh Ubuntu Server 24.04 Pi.
+**Goal:** a layman downloads one image, flashes it, powers the Pi, joins the `PrivacyPi-Setup` WiFi
+and finishes a short wizard — no terminal, SSH or monitor. Supported: Raspberry Pi 4 and 5.
 
-Single source of truth for host facts: `/etc/privacypi/site.conf` → `opt/privacypi/scripts/lib/site.sh`
-→ Flask. Nothing is hardcoded to one Pi.
+**Where we are (v2.6.0):** the flashed image works on a real Pi 4 (tested 2026-10-02, no cable,
+Edimax EW-7811Un plugged in): first boot, setup WiFi, wizard, restart, private WiFi, Tor mode and
+.onion sites all worked. VPN connect is still untested on hardware.
 
-## Works (code complete, offline-validated)
-- All privileged scripts derive interfaces/subnets from `site.conf` (no hardcoded eth0/IPs).
-- **WAN selector**: `/network` page + `wan-config.sh` — Ethernet ⇄ WiFi-client, scan nearby
-  networks, ~25s validate + auto-rollback to Ethernet if WiFi fails (can't lock you out).
-- **`install.sh` provisions a fresh Pi end to end**: probes interfaces → writes `site.conf` →
-  installs packages incl. WiFi-client tools, **AdGuard Home** (seeded config → Unbound), and
-  proxy binaries (sslocal/xray/tun2socks) → applies network configs → disables systemd-resolved
-  → enables the full stack (AP, DHCP, DNS, firewall, Direct-mode routing, TLS, UI). Idempotent.
-- Routing modes, VPN provider config, Tor, DNS pages call the right scripts. Nav decluttered.
-- Offline checks pass: `bash -n` all scripts, sudoers `visudo -c`, AdGuard YAML valid, Flask
-  imports + all core routes present + context vars wired.
+## Hardware test results (Pi 4 + Edimax EW-7811Un, 2026-10-02)
+- ✅ Built-in radio (brcmfmac) as access point; restarting it is safe.
+- ✅ Edimax as the WiFi uplink to the home router (preset via `privacypi-config.txt`); survives the
+  kernel swapping wlan0/wlan1 between boots.
+- ✅ Wizard end to end, restart after Finish, clients online through Tor, .onion sites.
+- ❌ **Edimax (rtl8192cu) as access point freezes the whole Pi** when hostapd is restarted — hence
+  the role policy: built-in radio is always the AP, USB adapters are the uplink.
+- ⚠️ Setup page did not pop up by itself on an Android phone (had to open http://10.10.10.1).
+- ⚠️ Wizard Internet step: connecting to a WiFi the Pi is already on showed "timeout" (join itself is fine).
 
-## Left to do (needs the Pi)
-- [ ] Run the on-Pi bring-up checklist below; fix anything the hardware surfaces.
-- [ ] Test ExpressVPN end to end with a real account (only NordVPN has been verified live).
-- [ ] Re-create `app/tests/test_wan_api.py` — only a compiled `.pyc` of it was ever committed (now removed).
-- [ ] Optional: add the WiFi-WAN choice into the first-boot wizard (today it's on the
-      Internet page right after the wizard — fully functional, just one extra click).
+## Done (code + container tests)
+- [x] Port to Raspberry Pi OS Lite 64-bit (Debian 13); pure systemd-networkd.
+- [x] Radio roles detected by capability at every boot (`net-roles.sh`) — no adapter model or MAC assumptions.
+- [x] First-boot provisioning (`boot-init.sh` → `provision.sh`): per-device secrets, nothing baked into the image.
+- [x] Setup mode: `PrivacyPi-Setup` WiFi (password `privacypi`), captive portal, no internet until the wizard is done.
+- [x] New wizard over plain HTTP: password → internet → WiFi name/password/country → mode. Browser sets the Pi's clock.
+- [x] VPN connect flow (`vpn-connect.sh`): OpenVPN + WireGuard, NordVPN server auto-pick, auto-reconnect,
+      restore after reboot, blocked-not-leaked when the tunnel is down. (Before v2.6 nothing started a tunnel.)
+- [x] Dashboard reachable only from the PrivacyPi WiFi; upstream network is firewalled off.
+- [x] Encrypted upstream DNS (DNS-over-TLS) outside VPN tunnels.
+- [x] WiFi name/password change, optional two-step login, factory reset (dashboard or SD card file).
+- [x] Extras page: I2P / Yggdrasil / Lokinet installed on demand.
+- [x] `build-image.sh`: flashable `.img.xz` from the official Raspberry Pi OS Lite image, Docker only.
+- [x] Health report on the SD card's boot partition (`privacypi-status.txt`) for headless debugging.
 
-## On-Pi bring-up checklist (run when you have the Pi)
-1. Flash Ubuntu Server 24.04 → `sudo bash install.sh` → reboot.
-2. Join the `PrivacyPi` WiFi (password: `sudo cat /etc/privacypi/wifi-psk.txt`).
-3. Open `https://privacypi.local/` → finish the wizard (set admin password).
-4. Load any site → confirm ads are blocked.
-5. **Internet page** → switch WAN to WiFi (good creds works; wrong creds auto-rolls back to Ethernet).
-6. **Modes** → Direct → VPN → Tor; confirm the public/exit IP changes each time.
-7. Arm/disarm the kill switch; confirm client internet stops/resumes.
+## Test on a real Pi 4 — checklist
+1. Flash `build/privacypi-2.6.0.img.xz` (Raspberry Pi Imager → Use custom; no customisation). Cable in, power on, wait ~2 min.
+2. `PrivacyPi-Setup` appears → join with `privacypi` → setup page pops up (else http://10.10.10.1).
+3. Finish the wizard → your WiFi appears ~15 s later → join it → a web page loads; an ad-heavy site shows no ads.
+4. Dashboard http://10.10.10.1 → login `admin`.
+5. Routing → Tor → https://check.torproject.org says you are using Tor → back to Direct.
+6. VPN providers → NordVPN service credentials → Connect → public IP changes. Pull the Pi's cable for a minute: devices lose internet, then recover.
+7. Reboot the Pi (power-cycle): WiFi and the VPN come back by themselves.
+8. With the Edimax plugged in: Internet page → connect the Pi to home WiFi instead of the cable.
+9. If anything fails: power off, put the card in the Mac, read `privacypi-status.txt` on `bootfs`.
+
+## Known unknowns (only hardware can answer)
+- Phone captive-portal pop-up behaviour (iOS / Android) — logic tested with the same probe URLs, not with real phones.
+- First-boot timing on an SD card, and Raspberry Pi OS's own first-boot steps (root resize) together with ours.
+- ExpressVPN: needs a real account; its config quirks are handled in `openvpn-run.sh` but unverified.
+
+## Not in this release
+- Background features from v2.x whose timers/services are **not enabled** in the image (never tested on a
+  fresh install): anomaly detection, alert rules, daily digest, per-domain routing daemon, schedules,
+  blocklist rotation, MAC rotation, VPN server-list refresh. Their dashboard pages load but stay idle.
+- Over-the-air updates (`self-update.sh` is a placeholder). Updating = flashing a new image for now.
+- 5 GHz access point, multiple SSIDs, split tunnelling, Handshake DNS.
+- WAN choice lives in the wizard's Internet step and the Internet page; hot-plugging an adapter needs a reboot.

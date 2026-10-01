@@ -4,4 +4,4 @@ After=network-online.target
 
 [Service]
 Type=oneshot
-ExecStart=/opt/privacypi/scripts/rotate-mac.sh wlan0
+ExecStart=/opt/privacypi/scripts/rotate-mac.sh

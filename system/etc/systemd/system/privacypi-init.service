@@ -1,0 +1,18 @@
+[Unit]
+Description=PrivacyPi boot init (radio roles, first-boot provisioning, WiFi config)
+DefaultDependencies=no
+After=local-fs.target systemd-udev-settle.service boot-firmware.mount
+# The boot partition (rescue options) is wanted, not required: provisioning
+# must still happen if that mount ever fails.
+Wants=systemd-udev-settle.service network-pre.target boot-firmware.mount
+Before=network-pre.target systemd-networkd.service hostapd.service dnsmasq.service unbound.service AdGuardHome.service caddy.service privacypi-flask.service privacypi-firewall.service tor@default.service
+Conflicts=shutdown.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/privacypi/scripts/boot-init.sh
+RemainAfterExit=true
+TimeoutStartSec=120
+
+[Install]
+WantedBy=multi-user.target

@@ -1,6 +1,6 @@
 [Unit]
 Description=PrivacyPi Flask UI
-After=network.target privacypi-firewall.service
+After=network.target privacypi-init.service privacypi-firewall.service
 Wants=network.target
 
 [Service]
@@ -8,12 +8,18 @@ Type=simple
 User=privacypi
 Group=privacypi
 WorkingDirectory=/opt/privacypi/app
-ExecStart=/opt/privacypi/venv/bin/gunicorn --bind 0.0.0.0:8443 --certfile /etc/ssl/privacypi/cert.pem --keyfile /etc/ssl/privacypi/key.pem --workers 2 --threads 4 wsgi:app
+EnvironmentFile=-/etc/privacypi/secret.env
+# gunicorn keeps a control socket under $HOME; the real home is read-only here.
+RuntimeDirectory=privacypi
+Environment=HOME=/run/privacypi
+# Plain HTTP on loopback only — Caddy is the front end (HTTP + HTTPS on the LAN).
+ExecStart=/opt/privacypi/venv/bin/gunicorn --bind 127.0.0.1:8443 --forwarded-allow-ips=127.0.0.1 --workers 2 --threads 4 --timeout 90 wsgi:app
 Restart=on-failure
 RestartSec=5
 NoNewPrivileges=false
 ProtectSystem=strict
-ReadWritePaths=/var/lib/privacypi /var/log/privacypi /run /etc/iptables /etc/privacypi /etc/tor /etc/wireguard /etc/wpa_supplicant /etc/systemd/network
+# Scripts run through sudo stay inside this sandbox, so every path they write must be listed.
+ReadWritePaths=/var/lib/privacypi /var/log/privacypi /run -/etc/iptables /etc/privacypi -/etc/tor -/etc/wireguard -/etc/wpa_supplicant -/etc/systemd/network -/etc/hostapd -/etc/unbound/unbound.conf.d -/boot/firmware -/etc/chrony/conf.d
 ProtectHome=true
 PrivateTmp=true
 

@@ -1,16 +1,24 @@
 {% extends "wizard/_base.html" %}
-{% block step %}1{% endblock %}
+{% block step %}Setup · about 2 minutes{% endblock %}
 {% block wizard %}
-<h2 style="margin:0 0 8px;font-size:24px;font-weight:600">Welcome</h2>
-<p class="sub mb-4">Your personal privacy router. Five short steps to ready.</p>
-<ol class="text-sm" style="line-height:1.9;padding-left:20px;color:var(--text-1)">
-  <li>Set an admin password (12+ characters)</li>
-  <li>Scan a 2FA QR code with your authenticator</li>
-  <li>Pick a profile that matches how you'll use it</li>
-  <li>(Optional) Add a VPN provider</li>
-  <li>Done — your privacy stack goes live</li>
+<h2>Welcome to PrivacyPi</h2>
+<p class="sub">Your own private WiFi: ads and trackers blocked, DNS encrypted, and VPN or Tor for every device that joins.</p>
+<ol class="text-sm" style="line-height:1.9;padding-left:20px;color:var(--text-1);margin:0 0 20px">
+  <li>Choose a password for this dashboard</li>
+  <li>Connect PrivacyPi to the internet</li>
+  <li>Name your private WiFi</li>
+  <li>Pick how private you want to be</li>
 </ol>
-<form method="post" class="mt-4">
+<form method="post">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
   <button class="btn btn-primary" style="width:100%">Get started →</button>
 </form>
+<script>
+// The Pi has no battery clock — give it the time from this device.
+window.addEventListener('load', function () {
+  var fd = new FormData();
+  fd.append('epoch', Math.floor(Date.now() / 1000));
+  fetch('/setup/clock', {method: 'POST', body: fd, headers: csrfHeaders()}).catch(function () {});
+});
+</script>
 {% endblock %}

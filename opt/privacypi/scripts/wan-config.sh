@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
-# wan-config.sh — choose how the Pi reaches the internet: wired Ethernet or the
-# built-in WiFi radio acting as a client/station to an upstream network.
+# wan-config.sh — choose how the Pi reaches the internet: wired Ethernet or a
+# spare WiFi radio (WIFI_WAN_IFACE, picked by net-roles.sh) acting as a
+# client/station to an upstream network. With a single radio (it is the AP)
+# WiFi-WAN is unavailable and scan/set-wifi return an error.
 #
 # Usage:
 #   wan-config.sh status              # JSON of current WAN state
@@ -16,12 +18,9 @@ set -uo pipefail
 source /opt/privacypi/scripts/lib/site.sh
 
 SCRIPTS=/opt/privacypi/scripts
-SYSNET_SRC=/opt/privacypi/system/etc/systemd/network/30-wlan0-wan.network
-SYSNET_DST=/etc/systemd/network/30-wlan0-wan.network
-WPA_CONF=/etc/wpa_supplicant/wpa_supplicant-wlan0.conf
+WPA_CONF="/etc/wpa_supplicant/wpa_supplicant-${WIFI_WAN_IFACE}.conf"
 WPA_UNIT="wpa_supplicant@${WIFI_WAN_IFACE}.service"
 VALIDATE_TIMEOUT=25
-: "${WAN_WIFI_COUNTRY:=US}"
 
 ACTION="${1:-status}"
 
@@ -42,9 +41,15 @@ set_conf_key() {
   rm -f "$tmp"
 }
 
+need_wifi_radio() {
+  [[ -n "$WIFI_WAN_IFACE" && -e "/sys/class/net/$WIFI_WAN_IFACE" ]] \
+    || die_json "No spare WiFi radio. The only radio is broadcasting the PrivacyPi network — use an Ethernet cable, or plug in a USB WiFi adapter and reboot."
+}
+
 oper() { cat "/sys/class/net/$1/operstate" 2>/dev/null || echo "missing"; }
 
 wifi_associated() {
+  [[ -n "$WIFI_WAN_IFACE" ]] || return 1
   wpa_cli -i "$WIFI_WAN_IFACE" status 2>/dev/null | grep -q '^wpa_state=COMPLETED'
 }
 
@@ -63,16 +68,18 @@ case "$ACTION" in
     ip4=$(ip -4 addr show "$WAN_IFACE" 2>/dev/null | awk '/inet /{print $2; exit}')
     gw=$(ip -4 route show default dev "$WAN_IFACE" 2>/dev/null | awk '/default/{print $3; exit}')
     python3 - "$WAN_MODE" "$WAN_IFACE" "$(oper "$ETH_IFACE")" "$(oper "$WIFI_WAN_IFACE")" \
-              "$WAN_WIFI_SSID" "$assoc" "$ip4" "$gw" <<'PY'
+              "$WAN_WIFI_SSID" "$assoc" "$ip4" "$gw" "$WIFI_WAN_IFACE" <<'PY'
 import json,sys
-_,mode,iface,eth,wlan,ssid,assoc,ip4,gw = sys.argv
+_,mode,iface,eth,wlan,ssid,assoc,ip4,gw,wifi_if = sys.argv
 print(json.dumps({"ok":True,"wan_mode":mode,"wan_iface":iface,
   "eth_oper":eth,"wlan_oper":wlan,"wifi_ssid":ssid,
-  "associated":assoc=="true","ip":ip4,"gw":gw}))
+  "associated":assoc=="true","ip":ip4,"gw":gw,
+  "wifi_wan_available":bool(wifi_if),"wifi_wan_iface":wifi_if}))
 PY
     ;;
 
   scan)
+    need_wifi_radio
     ip link set "$WIFI_WAN_IFACE" up 2>/dev/null || true
     raw=$(iw dev "$WIFI_WAN_IFACE" scan 2>/dev/null || true)
     printf '%s' "$raw" | python3 -c '
@@ -101,9 +108,11 @@ print(json.dumps({"ok":True,"networks":out}))
     ;;
 
   set-ethernet)
-    systemctl disable --now "$WPA_UNIT" 2>/dev/null || true
-    ip addr flush dev "$WIFI_WAN_IFACE" 2>/dev/null || true
-    ip link set "$WIFI_WAN_IFACE" down 2>/dev/null || true
+    if [[ -n "$WIFI_WAN_IFACE" ]]; then
+      systemctl disable --now "$WPA_UNIT" 2>/dev/null || true
+      ip addr flush dev "$WIFI_WAN_IFACE" 2>/dev/null || true
+      ip link set "$WIFI_WAN_IFACE" down 2>/dev/null || true
+    fi
     set_conf_key WAN_MODE ethernet
     set_conf_key WAN_IFACE "$ETH_IFACE"
     set_conf_key WAN_WIFI_SSID ""
@@ -113,6 +122,7 @@ print(json.dumps({"ok":True,"networks":out}))
     ;;
 
   set-wifi)
+    need_wifi_radio
     SSID="${2:-}"
     [[ -z "$SSID" ]] && die_json "ssid required"
     PSK=$(cat)                       # read passphrase from stdin (never argv)
@@ -132,8 +142,8 @@ print(json.dumps({"ok":True,"networks":out}))
       reapply_routing
     }
 
-    # Ensure the networkd DHCP profile for wlan0 is present
-    [[ -f "$SYSNET_DST" ]] || { [[ -f "$SYSNET_SRC" ]] && install -m 644 "$SYSNET_SRC" "$SYSNET_DST"; }
+    # Ensure the networkd DHCP profile for the WAN radio is present
+    NET_ROLES_NO_RELOAD=1 bash "$SCRIPTS/net-roles.sh" apply >/dev/null 2>&1 || true
 
     # Write supplicant config with a HASHED psk (never plaintext on disk)
     install -d -m 755 /etc/wpa_supplicant
@@ -142,7 +152,7 @@ print(json.dumps({"ok":True,"networks":out}))
       echo "ctrl_interface=/run/wpa_supplicant"
       echo "ctrl_interface_group=0"
       echo "update_config=1"
-      echo "country=$WAN_WIFI_COUNTRY"
+      echo "country=$WIFI_COUNTRY"
       echo ""
       wpa_passphrase "$SSID" "$PSK" | grep -vE '^\s*#psk='
     } > "$tmp" 2>/dev/null

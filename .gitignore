@@ -16,3 +16,6 @@ CREDENTIALS.local.md
 .env
 .claude/
 .DS_Store
+
+# Image build cache + outputs
+build/

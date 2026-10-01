@@ -1,12 +1,15 @@
 #!/usr/bin/env bash
-# PrivacyPi installer — one-command bootstrap on a fresh Ubuntu Server 24.04.
+# PrivacyPi installer.
 #
-# Run as root on the Pi (NOT on your laptop):
-#   curl -fsSL https://raw.githubusercontent.com/YOUR/privacypi/main/install.sh | sudo bash
+# Two ways this runs:
+#   1. Image build (PRIVACYPI_IMAGE_BUILD=1, inside a chroot — see build-image.sh):
+#      installs everything, generates NO secrets and starts nothing. The device
+#      provisions itself on first boot (opt/privacypi/scripts/boot-init.sh).
+#   2. Developer install on a running Raspberry Pi OS Lite (64-bit):
+#        sudo bash install.sh && sudo reboot
 #
-# Or after cloning:
-#   sudo bash install.sh
-#
+# Either way the device comes up broadcasting the setup WiFi "PrivacyPi-Setup"
+# (password: privacypi) and serves the setup wizard at http://10.10.10.1.
 # Idempotent — re-run to re-apply config drift.
 
 set -euo pipefail
@@ -16,125 +19,104 @@ INSTALL_PREFIX=/opt/privacypi
 ETC_PRIVACYPI=/etc/privacypi
 SITE_CONF="$ETC_PRIVACYPI/site.conf"
 LOG_FILE=/var/log/privacypi-install.log
+IMAGE_BUILD="${PRIVACYPI_IMAGE_BUILD:-0}"
+PP_VERSION="$(cat "$REPO_ROOT/VERSION" 2>/dev/null || echo dev)"
+
+# Pinned third-party releases (bump deliberately, then re-test)
+AGH_VER=v0.107.79
+SS_VER=v1.25.0
+XRAY_VER=v26.3.27
+T2S_VER=v2.7.0
 
 [[ $EUID -eq 0 ]] || { echo "Run as root: sudo bash $0"; exit 1; }
 
-log() { echo -e "\033[36m==>\033[0m $*" | tee -a "$LOG_FILE"; }
+log()  { echo -e "\033[36m==>\033[0m $*" | tee -a "$LOG_FILE"; }
 warn() { echo -e "\033[33m!! $*\033[0m" | tee -a "$LOG_FILE"; }
-die() { echo -e "\033[31m## $*\033[0m" | tee -a "$LOG_FILE"; exit 1; }
-
-mkdir -p "$ETC_PRIVACYPI" /var/lib/privacypi /var/log/caddy
-chmod 750 "$ETC_PRIVACYPI"
+die()  { echo -e "\033[31m## $*\033[0m" | tee -a "$LOG_FILE"; exit 1; }
+sc_q() { systemctl "$@" >> "$LOG_FILE" 2>&1 || true; }
 
 #-----------------------------------------------------------
-log "1/12 Detecting interfaces"
+log "1/9 Platform"
 #-----------------------------------------------------------
-# Find a wired interface with an IPv4 — that's the WAN/LAN-uplink
-WAN_IFACE=$(ip -4 -br addr show 2>/dev/null \
-  | awk '$1 ~ /^(eth|en|enp|enx)/ && $2 == "UP"{print $1; exit}')
-[[ -z "$WAN_IFACE" ]] && die "No wired interface with carrier found"
-
-HOST_IP=$(ip -4 addr show "$WAN_IFACE" | awk '/inet /{print $2; exit}' | cut -d/ -f1)
-[[ -z "$HOST_IP" ]] && die "No IPv4 address on $WAN_IFACE"
-
-# Find the AP-capable wireless (must support hostapd; we assume any wlan*)
-AP_IFACE=$(ip -br link show 2>/dev/null \
-  | awk '$1 ~ /^wl/{print $1; exit}')
-[[ -z "$AP_IFACE" ]] && warn "No wireless interface found — AP mode disabled"
-
-log "    WAN: $WAN_IFACE ($HOST_IP)   AP: ${AP_IFACE:-none}"
+command -v apt-get >/dev/null 2>&1 || die "This installer needs a Debian-based OS (Raspberry Pi OS / Debian)"
+. /etc/os-release 2>/dev/null || true
+log "    OS: ${PRETTY_NAME:-unknown}   arch: $(dpkg --print-architecture 2>/dev/null)   image-build: $IMAGE_BUILD   version: $PP_VERSION"
 
 #-----------------------------------------------------------
-log "2/12 Writing $SITE_CONF"
+log "2/9 User, directories, site.conf"
 #-----------------------------------------------------------
+if ! id privacypi >/dev/null 2>&1; then
+  useradd --system --create-home --home-dir "$INSTALL_PREFIX" --shell /bin/bash privacypi
+fi
+install -d -m 750 -o root -g privacypi "$ETC_PRIVACYPI"
+# The Flask app (user privacypi) owns its state + log dirs.
+install -d -m 750 -o privacypi -g privacypi /var/lib/privacypi /var/log/privacypi
+install -d -m 755 /etc/iptables /var/log/caddy
 if [[ ! -s "$SITE_CONF" ]]; then
-  cp "$REPO_ROOT/system/etc/privacypi/site.conf.example" "$SITE_CONF"
-  # WAN defaults to ethernet on first boot; the wired iface we probed is ETH_IFACE.
-  # The admin switches to WiFi-WAN later from the dashboard (wan-config.sh).
-  sed -i "s|^WAN_MODE=.*|WAN_MODE=ethernet|"        "$SITE_CONF"
-  sed -i "s|^ETH_IFACE=.*|ETH_IFACE=$WAN_IFACE|"    "$SITE_CONF"
-  sed -i "s|^AP_IFACE=.*|AP_IFACE=${AP_IFACE:-wlan1}|" "$SITE_CONF"
-  sed -i "s|^HOST_IP=.*|HOST_IP=$HOST_IP|"          "$SITE_CONF"
+  install -m 644 "$REPO_ROOT/system/etc/privacypi/site.conf.example" "$SITE_CONF"
 fi
 chown root:root "$SITE_CONF"; chmod 644 "$SITE_CONF"
 
 #-----------------------------------------------------------
-log "3/12 Installing OS dependencies"
+log "3/9 Packages"
 #-----------------------------------------------------------
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
 apt-get install -y --no-install-recommends \
   python3 python3-venv python3-pip \
-  iptables ipset iproute2 iputils-ping \
+  iptables ipset iproute2 iputils-ping conntrack \
   hostapd dnsmasq bridge-utils \
-  wpasupplicant iw wireless-tools rfkill macchanger \
-  unbound \
-  tor obfs4proxy \
+  wpasupplicant iw rfkill \
+  unbound dns-root-data \
+  tor \
   wireguard-tools \
   openvpn \
   curl gnupg ca-certificates avahi-daemon avahi-utils \
-  apt-transport-https debian-keyring debian-archive-keyring \
+  rsync sudo unzip xz-utils sqlite3 openssl \
   chrony \
-  build-essential autoconf automake libtool libunbound-dev pkg-config \
-  >> "$LOG_FILE" 2>&1
-log "    apt: done"
+  >> "$LOG_FILE" 2>&1 || die "apt install failed — see $LOG_FILE"
+# Nice-to-have packages whose names/availability vary between releases.
+for pkg in obfs4proxy snowflake-client macchanger vnstat usbutils socat bind9-host \
+           netcat-openbsd speedtest-cli torsocks bsdextrautils; do
+  apt-get install -y --no-install-recommends "$pkg" >> "$LOG_FILE" 2>&1 || warn "optional package $pkg unavailable"
+done
 
-# Caddy from official repo
+# Caddy from its official repo
 if ! command -v caddy >/dev/null 2>&1; then
   curl -fsSL https://dl.cloudsmith.io/public/caddy/stable/gpg.key 2>/dev/null \
     | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
   echo 'deb [signed-by=/usr/share/keyrings/caddy-stable-archive-keyring.gpg] https://dl.cloudsmith.io/public/caddy/stable/deb/debian any-version main' \
     > /etc/apt/sources.list.d/caddy-stable.list
   apt-get update -qq
-  apt-get install -y caddy >> "$LOG_FILE" 2>&1
+  apt-get install -y caddy >> "$LOG_FILE" 2>&1 || die "caddy install failed — see $LOG_FILE"
 fi
+log "    apt: done"
 
-# snowflake-client (Tor pluggable transport)
-apt-get install -y snowflake-client >> "$LOG_FILE" 2>&1 || warn "snowflake-client unavailable on this distro"
-
-# CPU arch for fetching release binaries
 DEB_ARCH=$(dpkg --print-architecture 2>/dev/null || echo arm64)
 case "$DEB_ARCH" in
-  arm64|aarch64) AGH_ARCH=arm64; XRAY_ARCH=arm64-v8a; T2S_ARCH=arm64; SS_ARCH=aarch64-unknown-linux-gnu ;;
-  amd64|x86_64)  AGH_ARCH=amd64; XRAY_ARCH=64;        T2S_ARCH=amd64; SS_ARCH=x86_64-unknown-linux-gnu ;;
-  *)             AGH_ARCH=arm64; XRAY_ARCH=arm64-v8a; T2S_ARCH=arm64; SS_ARCH=aarch64-unknown-linux-gnu ;;
+  amd64|x86_64) AGH_ARCH=amd64; XRAY_ARCH=64;        T2S_ARCH=amd64; SS_ARCH=x86_64-unknown-linux-gnu ;;
+  *)            AGH_ARCH=arm64; XRAY_ARCH=arm64-v8a; T2S_ARCH=arm64; SS_ARCH=aarch64-unknown-linux-gnu ;;
 esac
 
 #-----------------------------------------------------------
-log "3b/12 AdGuard Home (filtering DNS on :53 → Unbound)"
+log "4/9 AdGuard Home $AGH_VER + proxy binaries"
 #-----------------------------------------------------------
 if [[ ! -x /opt/AdGuardHome/AdGuardHome ]]; then
-  AGH_VER=v0.107.52
   tmp=$(mktemp -d)
   if curl -fsSL "https://github.com/AdguardTeam/AdGuardHome/releases/download/${AGH_VER}/AdGuardHome_linux_${AGH_ARCH}.tar.gz" -o "$tmp/agh.tgz" >>"$LOG_FILE" 2>&1; then
     tar -xzf "$tmp/agh.tgz" -C /opt/      # extracts /opt/AdGuardHome/AdGuardHome
-    chmod 755 /opt/AdGuardHome/AdGuardHome 2>/dev/null || true
+    chown -R root:root /opt/AdGuardHome; chmod -R go-w /opt/AdGuardHome   # tarball ships world-writable
+    chmod 755 /opt/AdGuardHome/AdGuardHome
   else
-    warn "AdGuard Home download failed — ad-blocking DNS not installed (re-run installer to retry)"
+    die "AdGuard Home download failed"
   fi
   rm -rf "$tmp"
 fi
-# Seed a working config once (admin pw generated; DNS forwards to Unbound)
-if [[ -x /opt/AdGuardHome/AdGuardHome && ! -s /opt/AdGuardHome/AdGuardHome.yaml ]]; then
-  AGH_PW=$(head -c 12 /dev/urandom | base64 | tr -d '/+=' | head -c 14)
-  AGH_HASH=$(caddy hash-password --plaintext "$AGH_PW" 2>/dev/null || true)
-  LAN_GW_V=$(awk -F= '/^LAN_GW=/{print $2; exit}' "$SITE_CONF"); LAN_GW_V=${LAN_GW_V:-10.10.10.1}
-  if [[ -n "$AGH_HASH" ]]; then
-    sed -e "s|__LAN_GW__|$LAN_GW_V|g" -e "s|__ADMIN_HASH__|$AGH_HASH|g" \
-      "$REPO_ROOT/system/opt/AdGuardHome/AdGuardHome.yaml.template" > /opt/AdGuardHome/AdGuardHome.yaml
-    printf 'admin\n%s\n' "$AGH_PW" > "$ETC_PRIVACYPI/adguard.creds"
-    chmod 640 "$ETC_PRIVACYPI/adguard.creds"; chown root:privacypi "$ETC_PRIVACYPI/adguard.creds"
-    log "    AdGuard admin pw: sudo cat $ETC_PRIVACYPI/adguard.creds"
-  else
-    warn "could not hash AdGuard admin password — finish AdGuard setup at http://<pi>:3000"
-  fi
-fi
-if [[ -x /opt/AdGuardHome/AdGuardHome ]]; then
-  cat > /etc/systemd/system/AdGuardHome.service <<'UNIT'
+cat > /etc/systemd/system/AdGuardHome.service <<'UNIT'
 [Unit]
 Description=AdGuard Home
-After=network-online.target unbound.service
-Wants=network-online.target
+After=network.target unbound.service privacypi-init.service
+ConditionPathExists=/opt/AdGuardHome/AdGuardHome.yaml
 [Service]
 ExecStart=/opt/AdGuardHome/AdGuardHome --no-check-update --work-dir /opt/AdGuardHome --config /opt/AdGuardHome/AdGuardHome.yaml
 Restart=on-failure
@@ -142,13 +124,9 @@ RestartSec=5
 [Install]
 WantedBy=multi-user.target
 UNIT
-fi
 
-#-----------------------------------------------------------
-log "3c/12 Proxy/tunnel binaries (shadowsocks, xray, tun2socks)"
-#-----------------------------------------------------------
 # Best-effort — these power the optional "proxy" routing mode. Failures only warn.
-fetch_bin() {  # name test-cmd download-url extract-glob
+fetch_bin() {  # name url glob
   local name="$1" url="$2" glob="$3"
   command -v "$name" >/dev/null 2>&1 && return 0
   local tmp; tmp=$(mktemp -d)
@@ -165,224 +143,205 @@ fetch_bin() {  # name test-cmd download-url extract-glob
   fi
   rm -rf "$tmp"
 }
-apt-get install -y unzip xz-utils >> "$LOG_FILE" 2>&1 || true
-fetch_bin sslocal "https://github.com/shadowsocks/shadowsocks-rust/releases/download/v1.23.5/shadowsocks-v1.23.5.${SS_ARCH}.tar.xz" "sslocal"
-fetch_bin xray "https://github.com/XTLS/Xray-core/releases/download/v25.3.6/Xray-linux-${XRAY_ARCH}.zip" "xray"
-fetch_bin tun2socks "https://github.com/xjasonlyu/tun2socks/releases/download/v2.5.2/tun2socks-linux-${T2S_ARCH}.zip" "tun2socks*"
+fetch_bin sslocal "https://github.com/shadowsocks/shadowsocks-rust/releases/download/${SS_VER}/shadowsocks-${SS_VER}.${SS_ARCH}.tar.xz" "sslocal"
+fetch_bin xray "https://github.com/XTLS/Xray-core/releases/download/${XRAY_VER}/Xray-linux-${XRAY_ARCH}.zip" "xray"
+fetch_bin tun2socks "https://github.com/xjasonlyu/tun2socks/releases/download/${T2S_VER}/tun2socks-linux-${T2S_ARCH}.zip" "tun2socks*"
 
 #-----------------------------------------------------------
-log "4/12 Creating system user 'privacypi'"
-#-----------------------------------------------------------
-if ! id privacypi >/dev/null 2>&1; then
-  useradd --system --create-home --home-dir "$INSTALL_PREFIX" --shell /bin/bash privacypi
-fi
-
-#-----------------------------------------------------------
-log "5/12 Copying tree to $INSTALL_PREFIX"
+log "5/9 Copying PrivacyPi to $INSTALL_PREFIX"
 #-----------------------------------------------------------
 mkdir -p "$INSTALL_PREFIX"/{app,scripts,system}
-rsync -a --delete "$REPO_ROOT/app/" "$INSTALL_PREFIX/app/"
+rsync -a --delete --exclude '__pycache__' --exclude '.pytest_cache' "$REPO_ROOT/app/" "$INSTALL_PREFIX/app/"
 rsync -a --delete "$REPO_ROOT/opt/privacypi/scripts/" "$INSTALL_PREFIX/scripts/"
 rsync -a --delete "$REPO_ROOT/system/" "$INSTALL_PREFIX/system/"
+echo "$PP_VERSION" > "$INSTALL_PREFIX/VERSION"
 chown -R privacypi:privacypi "$INSTALL_PREFIX/app"
-chmod 755 "$INSTALL_PREFIX/scripts"
+chown -R root:root "$INSTALL_PREFIX/scripts" "$INSTALL_PREFIX/system"
+chmod 755 "$INSTALL_PREFIX" "$INSTALL_PREFIX/scripts"
 find "$INSTALL_PREFIX/scripts" -type f \( -name '*.sh' -o -name '*.py' \) -exec chmod 755 {} \;
 
 #-----------------------------------------------------------
-log "6/12 Python venv + Flask deps"
+log "6/9 Python venv + Flask deps"
 #-----------------------------------------------------------
 if [[ ! -x "$INSTALL_PREFIX/venv/bin/python" ]]; then
   python3 -m venv "$INSTALL_PREFIX/venv"
 fi
-"$INSTALL_PREFIX/venv/bin/pip" install --upgrade pip wheel >> "$LOG_FILE" 2>&1
-"$INSTALL_PREFIX/venv/bin/pip" install -r "$INSTALL_PREFIX/app/requirements.txt" >> "$LOG_FILE" 2>&1
+"$INSTALL_PREFIX/venv/bin/pip" install --no-cache-dir --upgrade pip wheel >> "$LOG_FILE" 2>&1
+"$INSTALL_PREFIX/venv/bin/pip" install --no-cache-dir -r "$INSTALL_PREFIX/app/requirements.txt" >> "$LOG_FILE" 2>&1 \
+  || die "pip install failed — see $LOG_FILE"
 
 #-----------------------------------------------------------
-log "7/12 Generating secrets (one-time)"
+log "7/9 System configuration"
 #-----------------------------------------------------------
-gen_secret() {
-  local path="$1" mode="$2" gen_cmd="$3"
-  if [[ ! -s "$path" ]]; then
-    eval "$gen_cmd" > "$path"
-    chmod "$mode" "$path"
-    chown root:privacypi "$path"
-  fi
-}
-gen_secret "$ETC_PRIVACYPI/master.key" 640 \
-  "$INSTALL_PREFIX/venv/bin/python -c 'from cryptography.fernet import Fernet; import sys; sys.stdout.buffer.write(Fernet.generate_key())'"
-gen_secret "$ETC_PRIVACYPI/alert.secret" 640 \
-  "head -c 48 /dev/urandom | base64 | tr -d '\n'"
-gen_secret "$ETC_PRIVACYPI/secret.key" 640 \
-  "head -c 64 /dev/urandom | base64 | tr -d '\n'"
-echo "PRIVACYPI_SECRET_KEY=$(cat $ETC_PRIVACYPI/secret.key)" > "$ETC_PRIVACYPI/secret.env"
-chmod 640 "$ETC_PRIVACYPI/secret.env"; chown root:privacypi "$ETC_PRIVACYPI/secret.env"
-
-#-----------------------------------------------------------
-log "8/12 Random WiFi passphrase + hostapd"
-#-----------------------------------------------------------
-if [[ -n "$AP_IFACE" ]]; then
-  HOSTAPD_CONF=/etc/hostapd/hostapd.conf
-  if [[ ! -f "$HOSTAPD_CONF" ]] || grep -q "^wpa_passphrase=privacypi$" "$HOSTAPD_CONF" 2>/dev/null; then
-    WIFI_PSK=$(head -c 18 /dev/urandom | base64 | tr -d '/+=' | head -c 14)
-    cat > "$HOSTAPD_CONF" <<EOF
-interface=$AP_IFACE
-bridge=$LAN_BRIDGE
-ssid=PrivacyPi
-hw_mode=g
-channel=7
-auth_algs=1
-wpa=2
-wpa_key_mgmt=WPA-PSK SAE
-wpa_pairwise=CCMP
-rsn_pairwise=CCMP
-wpa_passphrase=$WIFI_PSK
-ap_isolate=1
-sae_require_mfp=1
-EOF
-    chmod 600 "$HOSTAPD_CONF"
-    echo "$WIFI_PSK" > "$ETC_PRIVACYPI/wifi-psk.txt"
-    chmod 640 "$ETC_PRIVACYPI/wifi-psk.txt"
-    chown root:privacypi "$ETC_PRIVACYPI/wifi-psk.txt"
-    log "    Generated WiFi passphrase. Read it later via: sudo cat $ETC_PRIVACYPI/wifi-psk.txt"
-  fi
-fi
-
-#-----------------------------------------------------------
-log "8b/12 Network base config (netplan, networkd, dnsmasq, unbound)"
-#-----------------------------------------------------------
-# Apply the mirrored /etc network configs. netplan brings up the LAN bridge +
-# ETH WAN; the networkd drop-in handles DHCP on the WiFi-WAN radio when the
-# admin later switches WAN_MODE=wifi. We `generate` (validate) but do NOT
-# `apply` automatically — the operator reboots once at the end.
 SYS="$INSTALL_PREFIX/system/etc"
-install -d /etc/systemd/network
-[[ -f "$SYS/netplan/50-privacypi.yaml" ]] && install -m 600 "$SYS/netplan/50-privacypi.yaml" /etc/netplan/50-privacypi.yaml
-for f in "$SYS"/systemd/network/*.network; do
-  [[ -e "$f" ]] && install -m 644 "$f" /etc/systemd/network/
+
+# --- networking: systemd-networkd owns the LAN bridge, the wired uplink and the
+# WiFi-WAN radio (files rendered by net-roles.sh at boot). Other network
+# managers must not fight it. Nothing is switched live — it takes effect on the
+# next boot, so an SSH session running this installer is not cut off.
+for unit in NetworkManager.service NetworkManager-wait-online.service NetworkManager-dispatcher.service \
+            wpa_supplicant.service dhcpcd.service systemd-resolved.service \
+            userconfig.service; do
+  sc_q disable "$unit"
+  sc_q mask "$unit"
 done
-if [[ -d "$SYS/dnsmasq.d" ]]; then
-  install -d /etc/dnsmasq.d
-  install -m 644 "$SYS"/dnsmasq.d/*.conf /etc/dnsmasq.d/ 2>/dev/null || true
-fi
-if [[ -d "$SYS/unbound" ]]; then
-  cp -r "$SYS/unbound/." /etc/unbound/ 2>/dev/null || true
-fi
-[[ -f "$SYS/sysctl.d/99-privacypi.conf" ]] && install -m 644 "$SYS/sysctl.d/99-privacypi.conf" /etc/sysctl.d/99-privacypi.conf
-sysctl --system >> "$LOG_FILE" 2>&1 || true
-netplan generate >> "$LOG_FILE" 2>&1 || warn "netplan generate reported issues — review $LOG_FILE"
-
-#-----------------------------------------------------------
-log "9/12 Caddy from template"
-#-----------------------------------------------------------
-mkdir -p /etc/caddy
-HOST_MDNS=$(awk -F= '/^HOST_MDNS=/{print $2; exit}' "$SITE_CONF")
-HOST_MDNS=${HOST_MDNS:-privacypi.local}
-sed -e "s|__HOST_MDNS__|$HOST_MDNS|g" \
-    -e "s|__HOST_IP__|$HOST_IP|g" \
-    -e "s|__FLASK_PORT__|8443|g" \
-    "$INSTALL_PREFIX/system/etc/caddy/Caddyfile.template" > /etc/caddy/Caddyfile
-
-#-----------------------------------------------------------
-log "10/12 systemd units + sudoers"
-#-----------------------------------------------------------
-install -m 644 "$INSTALL_PREFIX/system/etc/systemd/system/"*.service /etc/systemd/system/ 2>/dev/null || true
-install -m 644 "$INSTALL_PREFIX/system/etc/systemd/system/"*.timer   /etc/systemd/system/ 2>/dev/null || true
-
-# Flask service drop-in for HTTP loopback (Caddy fronts TLS)
-mkdir -p /etc/systemd/system/privacypi-flask.service.d
-cat > /etc/systemd/system/privacypi-flask.service.d/10-http-loopback.conf <<'EOF'
+# cloud-init would re-apply NetworkManager/netplan config and rename things on first boot.
+[[ -d /etc/cloud ]] && touch /etc/cloud/cloud-init.disabled
+rm -f /etc/ssh/sshd_config.d/rename_user.conf
+sc_q enable systemd-networkd.service
+# Don't hold boot for 2 minutes when no cable is plugged in.
+install -d /etc/systemd/system/systemd-networkd-wait-online.service.d
+cat > /etc/systemd/system/systemd-networkd-wait-online.service.d/10-privacypi.conf <<'EOF'
 [Service]
-Environment=PRIVACYPI_COOKIE_SECURE=1
-EnvironmentFile=-/etc/privacypi/secret.env
 ExecStart=
-ExecStart=/opt/privacypi/venv/bin/gunicorn --bind 127.0.0.1:8443 --forwarded-allow-ips=127.0.0.1 --workers 2 --threads 4 wsgi:app
+ExecStart=-/usr/lib/systemd/systemd-networkd-wait-online --any --timeout=15
 EOF
 
-# Flask main unit if missing
-if [[ ! -f /etc/systemd/system/privacypi-flask.service ]]; then
-  cat > /etc/systemd/system/privacypi-flask.service <<EOF
+# --- services whose start can race the LAN bridge: keep retrying
+for svc in dnsmasq hostapd; do
+  install -d "/etc/systemd/system/$svc.service.d"
+  cat > "/etc/systemd/system/$svc.service.d/10-privacypi.conf" <<'EOF'
 [Unit]
-Description=PrivacyPi Flask dashboard
-After=network-online.target
-
+After=privacypi-init.service systemd-networkd.service
+StartLimitIntervalSec=0
 [Service]
-Type=simple
-WorkingDirectory=$INSTALL_PREFIX/app
-User=privacypi
-Group=privacypi
-EnvironmentFile=-/etc/privacypi/secret.env
-ExecStart=$INSTALL_PREFIX/venv/bin/gunicorn --bind 127.0.0.1:8443 --workers 2 --threads 4 wsgi:app
 Restart=on-failure
-
-[Install]
-WantedBy=multi-user.target
+RestartSec=3
 EOF
-fi
-
-# Sudoers — install the file from the repo, fix ownership, validate
-install -m 440 -o root -g root "$INSTALL_PREFIX/system/etc/sudoers.d/privacypi" /etc/sudoers.d/privacypi
-visudo -cf /etc/sudoers.d/privacypi >/dev/null
-
-systemctl daemon-reload
-
-# Free port 53 — systemd-resolved must not own it (AdGuard does). Point the
-# Pi's own resolver at loopback.
-if systemctl is-enabled systemd-resolved >/dev/null 2>&1; then
-  systemctl disable --now systemd-resolved >> "$LOG_FILE" 2>&1 || true
-fi
-rm -f /etc/resolv.conf 2>/dev/null || true
-printf 'nameserver 127.0.0.1\noptions edns0\n' > /etc/resolv.conf
-
-# hostapd ships masked on Ubuntu Server — unmask before enabling the AP.
-systemctl unmask hostapd >> "$LOG_FILE" 2>&1 || true
-
-# Enable the whole stack. AP + DHCP + recursive DNS + filtering + firewall +
-# routing (Direct mode on boot) + TLS + UI.
-for svc in unbound dnsmasq hostapd AdGuardHome tor \
-           privacypi-firewall privacypi-vpn-up \
-           avahi-daemon caddy privacypi-flask; do
-  systemctl enable --now "$svc" >> "$LOG_FILE" 2>&1 \
-    || warn "service $svc did not start cleanly — check: systemctl status $svc"
 done
+install -d /etc/systemd/system/tor@default.service.d
+cat > /etc/systemd/system/tor@default.service.d/10-privacypi.conf <<'EOF'
+[Unit]
+StartLimitIntervalSec=0
+[Service]
+Restart=on-failure
+RestartSec=10
+EOF
+
+# --- daemon configs
+install -d /etc/dnsmasq.d /etc/unbound/unbound.conf.d /etc/chrony/conf.d /etc/hostapd
+install -m 644 "$SYS"/dnsmasq.d/*.conf /etc/dnsmasq.d/
+install -m 644 "$SYS"/unbound/unbound.conf.d/*.conf /etc/unbound/unbound.conf.d/
+install -m 644 "$SYS"/chrony/conf.d/*.conf /etc/chrony/conf.d/
+install -m 644 "$SYS/default/hostapd" /etc/default/hostapd
+install -m 644 "$SYS/sysctl.d/99-privacypi.conf" /etc/sysctl.d/99-privacypi.conf
+install -m 644 "$SYS/modules-load.d/privacypi.conf" /etc/modules-load.d/privacypi.conf
+install -d /etc/iproute2/rt_tables.d
+install -m 644 "$SYS"/iproute2/rt_tables.d/*.conf /etc/iproute2/rt_tables.d/ 2>/dev/null || true
+if [[ -d /etc/tor ]]; then
+  [[ -f /etc/tor/torrc && ! -f /etc/tor/torrc.dist ]] && cp /etc/tor/torrc /etc/tor/torrc.dist
+  install -m 644 "$SYS/tor/torrc" /etc/tor/torrc
+fi
+# mDNS (privacypi.local) is for the PrivacyPi WiFi only — never announce the
+# device on the upstream network.
+if [[ -f /etc/avahi/avahi-daemon.conf ]]; then
+  LAN_BRIDGE_V=$(awk -F= '/^LAN_BRIDGE=/{print $2; exit}' "$SITE_CONF"); LAN_BRIDGE_V=${LAN_BRIDGE_V:-br-vlan10}
+  sed -i -e '/^[#[:space:]]*allow-interfaces=/d' -e "s/^\[server\]/[server]\nallow-interfaces=$LAN_BRIDGE_V/" /etc/avahi/avahi-daemon.conf
+fi
+# Bluetooth is unused: less radio noise next to the WiFi AP, smaller attack surface.
+for unit in bluetooth.service hciuart.service; do sc_q disable "$unit"; sc_q mask "$unit"; done
+
+# Keep the journal small on an SD card
+install -d /etc/systemd/journald.conf.d
+# Persistent, so a crash or freeze leaves evidence for the next boot.
+install -d -m 2755 /var/log/journal
+printf '[Journal]\nStorage=persistent\nSystemMaxUse=60M\nRuntimeMaxUse=30M\n' > /etc/systemd/journald.conf.d/10-privacypi.conf
+
+# --- hostname → privacypi.local via mDNS
+echo privacypi > /etc/hostname
+{ grep -v '^127\.0\.1\.1' /etc/hosts 2>/dev/null; printf '127.0.1.1\tprivacypi\n'; } > /tmp/hosts.new
+cat /tmp/hosts.new > /etc/hosts 2>/dev/null || warn "could not update /etc/hosts"
+rm -f /tmp/hosts.new
+
+# --- units + sudoers
+install -m 644 "$SYS"/systemd/system/*.service /etc/systemd/system/
+install -m 644 "$SYS"/systemd/system/*.timer   /etc/systemd/system/
+rm -f /etc/systemd/system/privacypi-net-roles.service \
+      /etc/systemd/system/multi-user.target.wants/privacypi-net-roles.service
+rm -rf /etc/systemd/system/privacypi-flask.service.d
+install -m 440 -o root -g root "$SYS/sudoers.d/privacypi" /etc/sudoers.d/privacypi
+visudo -cf /etc/sudoers.d/privacypi >/dev/null || die "sudoers file invalid"
+
+# systemd applies unit presets ("enable-only") on the very first boot of an
+# image: every installed unit that no preset file disables gets ENABLED —
+# verified in tests/e2e.sh (caddy-api, chronyd-restricted, rsync… came up).
+# So: list what we want, and disable everything else. The file sorts after
+# 90-systemd.preset so systemd's own defaults (getty, …) still apply; units
+# already enabled in the base image are never disabled by this pass.
+ENABLE_UNITS=(privacypi-init.service unbound.service dnsmasq.service hostapd.service AdGuardHome.service
+              tor.service chrony.service avahi-daemon.service caddy.service systemd-networkd.service
+              privacypi-firewall.service privacypi-vpn-up.service privacypi-setup-mode.service
+              privacypi-wan-watch.service privacypi-flask.service privacypi-diag.timer)
+install -d /etc/systemd/system-preset
+{
+  for u in "${ENABLE_UNITS[@]}"; do echo "enable $u"; done
+  cat <<'EOF'
+disable privacypi-*
+disable NetworkManager*
+disable wpa_supplicant.service
+disable systemd-resolved.service
+disable systemd-timesyncd.service
+disable userconfig.service
+disable ssh.service
+disable ssh.socket
+disable openvpn.service
+disable nftables.service
+disable cloud-*
+disable *
+EOF
+} > /etc/systemd/system-preset/95-privacypi.preset
+rm -f /etc/systemd/system-preset/00-privacypi.preset
+
+sc_q daemon-reload
+sc_q unmask hostapd        # ships masked on Debian / Raspberry Pi OS
+for svc in "${ENABLE_UNITS[@]}"; do
+  systemctl enable "$svc" >> "$LOG_FILE" 2>&1 || warn "could not enable $svc"
+done
+sc_q disable openvpn.service
+
+# The Pi resolves through its own filtering DNS.
+rm -f /etc/resolv.conf 2>/dev/null || true
+{ printf 'nameserver 127.0.0.1\noptions edns0\n' > /etc/resolv.conf; } 2>/dev/null || warn "could not write /etc/resolv.conf"
 
 #-----------------------------------------------------------
-log "11/12 First-boot DB migration"
+log "8/9 Provisioning"
 #-----------------------------------------------------------
-sudo -u privacypi "$INSTALL_PREFIX/venv/bin/python" - <<PY
-import sys
-sys.path.insert(0, '$INSTALL_PREFIX/app')
-from privacypi_app import create_app
-from privacypi_app.extensions import db
-app = create_app()
-with app.app_context():
-    db.create_all()
-PY
+BOOT=/boot/firmware; [[ -d "$BOOT" ]] || BOOT=/boot
+if [[ -d "$BOOT" && ! -f "$BOOT/privacypi-config.txt" ]]; then
+  install -m 644 "$REPO_ROOT/system/boot/privacypi-config.txt" "$BOOT/privacypi-config.txt" 2>/dev/null || true
+fi
+
+if [[ "$IMAGE_BUILD" == "1" ]]; then
+  # Nothing device-specific may be baked into an image. boot-init.sh provisions
+  # the device on its first boot.
+  rm -f "$ETC_PRIVACYPI"/{.provisioned,setup-complete,master.key,secret.key,secret.env,alert.secret,adguard.creds,wifi-psk.txt}
+  rm -f /opt/AdGuardHome/AdGuardHome.yaml /etc/hostapd/hostapd.conf /etc/caddy/Caddyfile
+  rm -f /var/lib/privacypi/privacypi.db
+  log "    image build: secrets deferred to first boot"
+else
+  sysctl --system >> "$LOG_FILE" 2>&1 || true
+  NET_ROLES_NO_RELOAD=1 "$INSTALL_PREFIX/scripts/net-roles.sh" apply 2>&1 | tee -a "$LOG_FILE" || warn "net-roles failed"
+  "$INSTALL_PREFIX/scripts/provision.sh" 2>&1 | tee -a "$LOG_FILE" || warn "provisioning reported errors"
+  # resolv.conf now points at our DNS — bring that path up so the Pi keeps resolving until the reboot.
+  for svc in unbound AdGuardHome; do
+    systemctl restart "$svc" >> "$LOG_FILE" 2>&1 || warn "service $svc did not start — check: systemctl status $svc"
+  done
+fi
 
 #-----------------------------------------------------------
-log "12/12 Done"
+log "9/9 Done"
 #-----------------------------------------------------------
+if [[ "$IMAGE_BUILD" != "1" ]]; then
 cat <<EOF
 
-  ┌─────────────────────────────────────────────────────────┐
-  │                                                         │
-  │   ✓ PrivacyPi installed                                 │
-  │                                                         │
-  │   Open a browser → https://$HOST_IP/setup
-  │                  → https://privacypi.local/setup        │
-  │                                                         │
-  │   You'll be prompted to:                                │
-  │     1. Set the admin password                           │
-  │     2. Scan the TOTP QR with your authenticator app     │
-  │     3. Save the 24-word recovery seed                   │
-  │     4. Pick a privacy preset                            │
-  │     5. Install the root cert (System → Trust device)    │
-  │                                                         │
-  │   WiFi:  SSID=PrivacyPi                                 │
-  │   PSK:   sudo cat /etc/privacypi/wifi-psk.txt           │
-  │                                                         │
-  │   >>> REBOOT NOW to bring up the AP + routing:          │
-  │       sudo reboot                                       │
-  │                                                         │
-  └─────────────────────────────────────────────────────────┘
+  ✓ PrivacyPi $PP_VERSION installed.
+
+  Reboot now:   sudo reboot
+
+  After the reboot:
+    1. Join the WiFi  "PrivacyPi-Setup"   (password: privacypi)
+    2. The setup page opens by itself — or browse to http://10.10.10.1
+    3. Follow the wizard (about 2 minutes)
 
 EOF
+fi

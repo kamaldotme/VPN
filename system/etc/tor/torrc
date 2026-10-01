@@ -1,12 +1,19 @@
 # PrivacyPi Tor config
 
 # Transparent proxy
-TransPort 127.0.0.1:9040
-TransPort 10.10.10.1:9040 IsolateClientAddr IsolateClientProtocol
+# Bound to all addresses so Tor starts before the LAN bridge has its address;
+# the firewall only lets the PrivacyPi WiFi reach these ports.
+TransPort 0.0.0.0:9040 IsolateClientAddr IsolateClientProtocol
 
 # DNS via Tor
-DNSPort 127.0.0.1:5353
-DNSPort 10.10.10.1:5353
+DNSPort 0.0.0.0:5353
+
+# .onion sites for every device on the WiFi: Tor answers a DNS lookup for an
+# onion name with a placeholder address from this private range, and maps
+# connections to that address back to the onion service.
+VirtualAddrNetworkIPv4 10.192.0.0/10
+AutomapHostsOnResolve 1
+AutomapHostsSuffixes .onion
 
 # Local SOCKS (for apps that want direct Tor SOCKS)
 SOCKSPort 127.0.0.1:9050

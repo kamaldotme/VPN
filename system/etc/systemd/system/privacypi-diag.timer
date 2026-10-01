@@ -1,0 +1,9 @@
+[Unit]
+Description=PrivacyPi status report — shortly after boot, then hourly
+
+[Timer]
+OnBootSec=75
+OnUnitActiveSec=1h
+
+[Install]
+WantedBy=timers.target

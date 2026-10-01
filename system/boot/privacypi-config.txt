@@ -1,0 +1,28 @@
+# PrivacyPi — rescue / developer options.
+#
+# This file lives on the SD card's small "bootfs" partition, which any computer
+# can open. Edit it, save, put the card back in the Pi and power it on.
+# One-shot options are applied once and then commented out automatically.
+#
+# After every start PrivacyPi also writes a health report next to this file:
+#   privacypi-status.txt   (no passwords inside — safe to share when asking for help)
+
+# --- Forgot the dashboard or WiFi password? ---------------------------------
+# Remove the "#" from the next line. PrivacyPi erases ALL settings and starts
+# again with the setup WiFi "PrivacyPi-Setup" (password: privacypi).
+#reset=yes
+
+# --- No network cable? Join your home WiFi ------------------------------------
+# Needs a USB WiFi adapter plugged into the Pi (the built-in WiFi runs your
+# private network). The password line is removed from this file once applied.
+#wifi_ssid=Your home WiFi name
+#wifi_password=your-home-wifi-password
+#wifi_country=IN
+
+# --- Developer access ---------------------------------------------------------
+# Enables SSH login for user "pi" with this password (ssh pi@<address>).
+#ssh_password=choose-a-password
+
+# Make the dashboard reachable from the upstream network too (the router the
+# Pi's cable/WiFi uplink is plugged into), not only from the PrivacyPi WiFi.
+#admin_on_wan=yes

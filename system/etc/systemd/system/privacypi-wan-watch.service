@@ -1,0 +1,12 @@
+[Unit]
+Description=PrivacyPi uplink watcher (re-applies client routing when the WAN changes)
+After=privacypi-vpn-up.service
+
+[Service]
+Type=simple
+ExecStart=/opt/privacypi/scripts/wan-watch.sh
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

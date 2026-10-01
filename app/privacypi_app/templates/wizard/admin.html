@@ -1,12 +1,12 @@
 {% extends "wizard/_base.html" %}
-{% block step %}2a{% endblock %}
+{% block step %}Step 1 of {{ steps_total - 1 }}{% endblock %}
 {% block wizard %}
-<h2 style="margin:0 0 8px;font-size:22px;font-weight:600">Set your admin password</h2>
-<p class="sub mb-4">12 characters minimum. Stored as bcrypt.</p>
-<form method="post">
+<h2>Dashboard password</h2>
+<p class="sub">You'll use this to change settings later. At least {{ min_pw }} characters — write it down.</p>
+<form method="post" autocomplete="off">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-  <div class="field"><label>New password</label><input type="password" name="password" autofocus required></div>
-  <div class="field"><label>Confirm</label><input type="password" name="password2" required></div>
+  <div class="field"><label>Password</label><input type="password" name="password" minlength="{{ min_pw }}" autocomplete="new-password" autofocus required></div>
+  <div class="field"><label>Type it again</label><input type="password" name="password2" minlength="{{ min_pw }}" autocomplete="new-password" required></div>
   <button class="btn btn-primary" style="width:100%">Continue →</button>
 </form>
 {% endblock %}

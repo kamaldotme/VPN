@@ -3,7 +3,7 @@
 # Frame Protection — anti-deauth), and AP-isolation (no lateral movement
 # between WiFi clients).
 #
-# Note: rtl8192cu (and most cheap dongles) only support WPA2. This script
+# Note: many cheap USB adapters only support WPA2. This script
 # probes capability and applies the strongest config the radio supports.
 #
 # Usage:
@@ -41,17 +41,18 @@ apply() {
     echo "ap_isolate=1" >> "$HOSTAPD_CONF"
   fi
 
-  # 802.11w MFP
+  # 802.11w MFP — "optional" (1), not "required" (2): WPA2-only devices that
+  # lack MFP must still be able to join; SAE clients are forced to use it below.
   if [[ "$MFP" == "true" ]]; then
     if grep -q "^ieee80211w=" "$HOSTAPD_CONF"; then
-      sed -i 's/^ieee80211w=.*/ieee80211w=2/' "$HOSTAPD_CONF"
+      sed -i 's/^ieee80211w=.*/ieee80211w=1/' "$HOSTAPD_CONF"
     else
-      echo "ieee80211w=2" >> "$HOSTAPD_CONF"
+      echo "ieee80211w=1" >> "$HOSTAPD_CONF"
     fi
   fi
 
   # WPA3 SAE (transition mode = WPA2/WPA3 mixed for backward compat)
-  if [[ "$WPA3" == "true" ]]; then
+  if [[ "$WPA3" == "true" && "$MFP" == "true" ]]; then
     sed -i 's/^wpa_key_mgmt=.*/wpa_key_mgmt=WPA-PSK SAE/' "$HOSTAPD_CONF"
     sed -i 's/^wpa=.*/wpa=2/' "$HOSTAPD_CONF"
     grep -q "^sae_require_mfp=" "$HOSTAPD_CONF" \

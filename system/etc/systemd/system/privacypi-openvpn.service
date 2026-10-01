@@ -1,0 +1,16 @@
+[Unit]
+Description=PrivacyPi OpenVPN client tunnel (tun0)
+After=network-online.target privacypi-firewall.service
+Wants=network-online.target
+ConditionPathExists=/etc/privacypi/vpn/active.ovpn
+
+[Service]
+Type=simple
+# The unit is started only by vpn-connect.sh; it keeps retrying on its own if
+# the tunnel drops (clients stay blocked meanwhile — never leaked).
+ExecStart=/opt/privacypi/scripts/openvpn-run.sh
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

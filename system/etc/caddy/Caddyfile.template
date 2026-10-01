@@ -1,10 +1,16 @@
 # PrivacyPi Caddy frontend — generated from this template by install.sh.
 # Variables interpolated:
-#   __HOST_MDNS__   e.g. privacypi.local
-#   __HOST_IP__     e.g. 192.168.1.155 (whatever the Pi's WAN_IFACE has)
+#   __SITE_NAMES__  e.g. "privacypi.local, 10.10.10.1" (+ optional HOST_IP)
 #   __FLASK_PORT__  default 8443
 
 {
+	# The dashboard is deliberately reachable over plain HTTP on the PrivacyPi
+	# WiFi (no certificate warning); HTTPS stays available for devices that
+	# installed the root certificate. So: no automatic HTTP->HTTPS redirect.
+	auto_https disable_redirects
+	# The root certificate is offered to users on the "Trust this device" page;
+	# don't try to add it to the Pi's own trust store.
+	skip_install_trust
 	log {
 		output file /var/log/caddy/caddy.log {
 			roll_size 10mb
@@ -14,8 +20,8 @@
 	}
 }
 
-# Main HTTPS vhost — single SAN cert covers both names.
-__HOST_MDNS__, __HOST_IP__ {
+# Main HTTPS vhost — single SAN cert covers every name.
+__SITE_NAMES__ {
 	tls internal
 
 	# One-click install of the Caddy root CA.
@@ -30,6 +36,27 @@ __HOST_MDNS__, __HOST_IP__ {
 
 	reverse_proxy 127.0.0.1:__FLASK_PORT__ {
 		header_up X-Forwarded-Proto https
+		header_up X-Forwarded-For {remote_host}
+	}
+
+	encode gzip zstd
+}
+
+# Plain HTTP — the setup wizard (captive portal) and the everyday dashboard
+# address (http://10.10.10.1). Any Host header is accepted: in setup mode every
+# DNS name resolves here and Flask redirects strangers to the wizard.
+:80 {
+	@root path /pi-root.crt /pi-root.pem
+	handle @root {
+		root * /var/lib/caddy/.local/share/caddy/pki/authorities/local
+		try_files /root.crt =404
+		header Content-Type application/x-x509-ca-cert
+		header Content-Disposition "attachment; filename=privacypi-root.crt"
+		file_server
+	}
+
+	reverse_proxy 127.0.0.1:__FLASK_PORT__ {
+		header_up X-Forwarded-Proto http
 		header_up X-Forwarded-For {remote_host}
 	}
 

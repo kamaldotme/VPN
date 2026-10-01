@@ -1,0 +1,12 @@
+[Unit]
+Description=PrivacyPi setup mode (captive setup network until the wizard is finished)
+After=privacypi-vpn-up.service
+ConditionPathExists=!/etc/privacypi/setup-complete
+
+[Service]
+Type=oneshot
+ExecStart=/opt/privacypi/scripts/setup-mode.sh on
+RemainAfterExit=true
+
+[Install]
+WantedBy=multi-user.target

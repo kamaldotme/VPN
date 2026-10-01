@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block heading %}VPN Providers{% endblock %}
-{% block subheading %}Connect a provider, then choose it on the Routing page.{% endblock %}
+{% block subheading %}Sign in to your VPN once — every device on your WiFi then uses it.{% endblock %}
 {% block content %}
 
 {% set meta = {
@@ -15,12 +15,18 @@
   'custom-wg': ('Custom WireGuard','.conf upload'),
 } %}
 
+<div class="card mb-4" id="vpn-now">
+  <p class="card-title">Status</p>
+  <div id="vpn-now-text" class="text-sm text-muted mt-2">Loading…</div>
+  <button id="vpn-off" class="btn btn-sm mt-3" style="display:none">Disconnect VPN</button>
+</div>
+
 <div class="card mb-4">
   <p class="section-title">How to connect</p>
   <div class="steps">
-    <div class="step"><b>1</b> Enter your account credentials or upload a config file</div>
-    <div class="step"><b>2</b> Open <span class="text-accent">Routing</span> and pick OpenVPN or WireGuard</div>
-    <div class="step"><b>3</b> Watch the dashboard confirm a new public IP</div>
+    <div class="step"><b>1</b> <span><strong>NordVPN:</strong> enter your <em>service credentials</em> (Nord Account → NordVPN → Manual setup — not your email login), press Save, then Connect.</span></div>
+    <div class="step"><b>2</b> <span><strong>ExpressVPN and others:</strong> enter the <em>manual configuration</em> username and password from your provider's website, upload the <code>.ovpn</code> (or WireGuard <code>.conf</code>) file for the server you want, then Connect.</span></div>
+    <div class="step"><b>3</b> If the VPN drops, devices lose internet instead of leaking — it reconnects by itself.</div>
   </div>
 </div>
 
@@ -54,6 +60,12 @@
         <input type="file" name="file" accept=".ovpn,.conf" hidden>
       </label>
     </form>
+    {% if p == 'nordvpn' %}
+    <select class="nord-country mt-3" style="width:100%">
+      <option value="">Fastest server (recommended)</option>
+    </select>
+    {% endif %}
+    <button class="btn btn-primary vpn-connect mt-3" data-provider="{{ p }}" style="width:100%">Connect</button>
     <p class="vpn-result text-xs text-muted mt-3" style="margin:0;min-height:1em"></p>
   </div>
   {% endfor %}
@@ -82,5 +94,52 @@ document.querySelectorAll('.vpn-upload input[type=file]').forEach(inp => inp.add
   if (d.ok) setState(tile, true, 'config added');
   window.toast(form.dataset.provider + (d.ok ? ' file uploaded' : ' upload failed'), d.ok ? 'ok' : 'danger');
 }));
+
+// --- connect / disconnect ---------------------------------------------------
+async function vpnRefresh() {
+  try {
+    const d = await (await fetch('/api/vpn/state')).json();
+    const t = document.getElementById('vpn-now-text'), off = document.getElementById('vpn-off');
+    const on = (d.mode === 'openvpn' && d.tun0_up) || (d.mode === 'wireguard' && d.wg0_up);
+    const pending = (d.mode === 'openvpn' || d.mode === 'wireguard') && !on;
+    t.innerHTML = on ? '<strong class="text-accent">🔐 Connected</strong> — ' + d.provider + (d.server ? ' · <code>' + d.server + '</code>' : '')
+      : pending ? '<strong>Reconnecting…</strong> devices are blocked from the internet until the tunnel is back.'
+      : 'Not using a VPN (current mode: ' + (d.mode || 'direct') + ').';
+    off.style.display = (on || pending) ? '' : 'none';
+    document.querySelectorAll('.tile').forEach(tile => {
+      const info = (d.providers || {})[tile.dataset.provider];
+      if (!info) return;
+      const b = tile.querySelector('.vpn-state');
+      if (on && d.provider === tile.dataset.provider) { b.textContent = 'connected'; b.className = 'badge vpn-state ok'; tile.classList.add('active'); }
+      else if (info.credentials || info.servers) { b.textContent = 'ready'; b.className = 'badge vpn-state ok'; tile.classList.remove('active'); }
+    });
+  } catch (e) {}
+}
+document.querySelectorAll('.vpn-connect').forEach(btn => btn.addEventListener('click', async () => {
+  const tile = btn.closest('.tile'), out = tile.querySelector('.vpn-result');
+  const fd = new FormData();
+  const sel = tile.querySelector('.nord-country');
+  if (sel) fd.append('country', sel.value);
+  btn.disabled = true; btn.textContent = 'Connecting… (up to a minute)';
+  try {
+    const d = await (await fetch(`/api/vpn/${btn.dataset.provider}/connect`, {method: 'POST', body: fd, headers: csrfHeaders()})).json();
+    out.textContent = d.ok ? '✓ connected' : '✗ ' + (d.error || 'failed');
+    window.toast(d.ok ? 'VPN connected' : (d.error || 'VPN failed'), d.ok ? 'ok' : 'danger');
+  } catch (e) { out.textContent = '✗ request failed'; }
+  btn.disabled = false; btn.textContent = 'Connect'; vpnRefresh();
+}));
+document.getElementById('vpn-off').addEventListener('click', async () => {
+  await fetch('/api/vpn/disconnect', {method: 'POST', headers: csrfHeaders()});
+  window.toast('VPN disconnected', 'ok'); vpnRefresh();
+});
+(async () => {
+  const sel = document.querySelector('.nord-country');
+  if (!sel) return;
+  try {
+    const d = await (await fetch('/api/vpn/nord/countries')).json();
+    (d.countries || []).forEach(c => { const o = document.createElement('option'); o.value = c.id; o.textContent = c.name; sel.appendChild(o); });
+  } catch (e) {}
+})();
+vpnRefresh(); setInterval(vpnRefresh, 6000);
 </script>
 {% endblock %}

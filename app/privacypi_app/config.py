@@ -7,7 +7,9 @@ class Config:
         "PRIVACYPI_DB_URI", "sqlite:////var/lib/privacypi/privacypi.db"
     )
     SQLALCHEMY_TRACK_MODIFICATIONS = False
-    SESSION_COOKIE_SECURE = os.environ.get("PRIVACYPI_COOKIE_SECURE", "1") == "1"
+    # Cookie name + Secure flag are chosen per request (HTTP on the LAN vs
+    # HTTPS) by SchemeAwareSessionInterface in __init__.py.
+    SESSION_COOKIE_SECURE = False
     SESSION_COOKIE_HTTPONLY = True
     SESSION_COOKIE_SAMESITE = "Strict"
     PERMANENT_SESSION_LIFETIME = 60 * 60 * 4  # 4 hours
@@ -58,4 +60,11 @@ class Config:
         "daily-digest": "/opt/privacypi/scripts/daily-digest.sh",
         "rotate-blocklists": "/opt/privacypi/scripts/rotate-blocklists.sh",
         "rotate-wg-psk": "/opt/privacypi/scripts/rotate-wg-psk.sh",
+        "ap-config": "/opt/privacypi/scripts/ap-config.sh",
+        "setup-finish": "/opt/privacypi/scripts/setup-finish.sh",
+        "set-time": "/opt/privacypi/scripts/set-time.sh",
+        "extras": "/opt/privacypi/scripts/extras.sh",
+        "vpn-connect": "/opt/privacypi/scripts/vpn-connect.sh",
+        "net-roles": "/opt/privacypi/scripts/net-roles.sh",
+        "diag": "/opt/privacypi/scripts/diag.sh",
     }

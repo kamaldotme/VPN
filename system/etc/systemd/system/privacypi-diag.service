@@ -1,0 +1,6 @@
+[Unit]
+Description=PrivacyPi status report to the boot partition
+
+[Service]
+Type=oneshot
+ExecStart=/opt/privacypi/scripts/diag.sh

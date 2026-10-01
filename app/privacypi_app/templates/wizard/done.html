@@ -1,17 +1,21 @@
 {% extends "wizard/_base.html" %}
-{% block step %}5{% endblock %}
+{% block step %}Last step{% endblock %}
 {% block wizard %}
-<h2 style="margin:0 0 8px;font-size:24px;font-weight:600">🎉 You're ready</h2>
-<p class="sub mb-4">PrivacyPi is configured. From the dashboard you can:</p>
-<ul class="text-sm" style="line-height:1.8;color:var(--text-1)">
-  <li>Switch routing mode (Direct / VPN / Tor / Proxy / Killswitch)</li>
-  <li>Add VPN providers and upload .ovpn files</li>
-  <li>Configure Tor bridges</li>
-  <li>See connected devices + assign per-device routing</li>
-  <li>View live bandwidth + DNS query stats</li>
-</ul>
+<h2>Ready to go</h2>
+<p class="sub">Check these, then finish.</p>
+<div class="card mb-4" style="padding:14px">
+  <div class="text-sm text-muted">Your WiFi</div>
+  <div style="font-weight:600">{{ ssid }}</div>
+  <div class="text-sm text-muted mt-3">Privacy</div>
+  <div style="font-weight:600">{{ mode.icon }} {{ mode.label }}</div>
+</div>
+<p class="text-sm" style="color:var(--text-1)">
+  When you press <strong>Finish</strong>, PrivacyPi restarts. The setup network disappears and
+  <strong>{{ ssid }}</strong> appears about a minute later. Join it with the WiFi password you just chose.
+</p>
 <form method="post" class="mt-4">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-  <button class="btn btn-primary" style="width:100%">Take me to the dashboard →</button>
+  <button class="btn btn-primary" style="width:100%">Finish</button>
 </form>
+<p class="text-xs mt-3" style="text-align:center"><a href="{{ url_for('wizard.wifi') }}" class="text-muted">← Change WiFi name or password</a></p>
 {% endblock %}

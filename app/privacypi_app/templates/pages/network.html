@@ -17,9 +17,15 @@
 <div class="card">
   <p class="card-title">📶 WiFi network</p>
   <p class="text-sm text-muted">
-    Connect the Pi's built-in WiFi to a home router or a phone hotspot. Useful when there's no cable.
+    Connect PrivacyPi to a home router or a phone hotspot over WiFi. Useful when there's no cable.
     If the password is wrong or it can't connect, PrivacyPi automatically switches back to Ethernet — you won't get locked out of this dashboard.
   </p>
+  {% if wan and wan.ok and not wan.wifi_wan_available %}
+  <p class="text-sm mt-3" id="wifi-unavailable">
+    <strong>Not available with a single WiFi radio.</strong> The Pi's WiFi is busy broadcasting your PrivacyPi network.
+    To get internet over WiFi, plug in a USB WiFi adapter and restart PrivacyPi — it will be detected automatically.
+  </p>
+  {% else %}
 
   <div class="flex gap-2 mt-3" style="flex-wrap:wrap; align-items:flex-end">
     <div style="flex:1; min-width:200px">
@@ -37,9 +43,41 @@
 
   <button id="btn-wifi" class="btn btn-primary mt-3">Connect to WiFi</button>
   <p id="wifi-note" class="text-sm text-muted mt-2"></p>
+  {% endif %}
+</div>
+
+<div class="card mt-4">
+  <p class="card-title">📡 Your PrivacyPi WiFi</p>
+  <p class="text-sm text-muted">The network your devices join. Changing the name or password restarts the WiFi — every device (including this one) has to reconnect.</p>
+  <div class="mt-3" style="max-width:320px">
+    <label class="text-sm text-muted">WiFi name</label>
+    <input id="ap-ssid" maxlength="32" autocomplete="off">
+  </div>
+  <div class="mt-3" style="max-width:320px">
+    <label class="text-sm text-muted">New WiFi password (8+ characters)</label>
+    <input id="ap-psk" type="password" maxlength="63" autocomplete="new-password">
+  </div>
+  <button id="btn-ap" class="btn btn-primary mt-3">Save and restart WiFi</button>
+  <p id="ap-note" class="text-sm text-muted mt-2"></p>
 </div>
 
 <script>
+fetch('/api/ap').then(r => r.json()).then(d => {
+  if (d.ok) { document.getElementById('ap-ssid').value = d.ssid;
+    document.getElementById('ap-note').textContent = 'Radio ' + (d.iface || '?') + ' · channel ' + d.channel + ' · country ' + d.country; }
+}).catch(() => {});
+document.getElementById('btn-ap').addEventListener('click', async () => {
+  const ssid = document.getElementById('ap-ssid').value.trim(), psk = document.getElementById('ap-psk').value;
+  if (psk.length < 8) { window.toast('WiFi password must be at least 8 characters', 'danger'); return; }
+  if (!confirm('Restart the WiFi as "' + ssid + '"? You will need to reconnect with the new password.')) return;
+  const fd = new FormData(); fd.append('ssid', ssid); fd.append('psk', psk);
+  try {
+    const d = await (await fetch('/api/ap', {method: 'POST', body: fd, headers: csrfHeaders()})).json();
+    window.toast(d.ok ? 'Saved — WiFi restarts in a few seconds' : (d.error || 'Failed'), d.ok ? 'ok' : 'danger');
+    if (d.ok) document.getElementById('ap-note').textContent = 'Reconnect to "' + ssid + '" with the new password.';
+  } catch (e) { window.toast('Request failed', 'danger'); }
+});
+
 function renderStatus(d) {
   const el = document.getElementById('wan-status');
   if (!d || d.ok === false) { el.textContent = (d && d.error) || 'Unavailable'; return; }
@@ -59,7 +97,7 @@ async function refresh() {
   catch (e) { /* ignore transient errors during a switch */ }
 }
 
-document.getElementById('btn-scan').addEventListener('click', async () => {
+document.getElementById('btn-scan')?.addEventListener('click', async () => {
   const list = document.getElementById('scan-list');
   list.innerHTML = '<span class="text-sm text-muted">Scanning…</span>';
   try {
@@ -89,7 +127,7 @@ document.getElementById('btn-eth').addEventListener('click', async () => {
   btn.disabled = false; refresh();
 });
 
-document.getElementById('btn-wifi').addEventListener('click', async () => {
+document.getElementById('btn-wifi')?.addEventListener('click', async () => {
   const ssid = document.getElementById('ssid').value.trim();
   const psk = document.getElementById('psk').value;
   if (!ssid) { window.toast('Enter a network name', 'danger'); return; }

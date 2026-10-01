@@ -3,7 +3,9 @@ set -euo pipefail
 source /opt/privacypi/scripts/lib/site.sh
 
 GW="$(ip -4 route show default | awk '/default/{print $3; exit}')"
-[[ -z "$GW" ]] && { echo "no default gateway found"; exit 1; }
+# No uplink yet (first boot before the wizard, or cable unplugged): not an error —
+# the AP and admin UI must still come up. Re-run once the WAN is connected.
+[[ -z "$GW" ]] && { echo "no default gateway yet — LAN routing deferred"; exit 0; }
 
 # Single LAN bridge for the AP clients. Policy-route its subnet out the WAN.
 table=100

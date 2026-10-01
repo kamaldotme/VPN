@@ -1,0 +1,17 @@
+{% extends "wizard/_base.html" %}
+{% block step %}Setup complete{% endblock %}
+{% block wizard %}
+<h2>🎉 PrivacyPi is ready</h2>
+<p class="sub">PrivacyPi is restarting — give it about a minute.</p>
+<ol class="text-sm" style="line-height:1.9;padding-left:20px;color:var(--text-1)">
+  <li>Open your device's WiFi settings</li>
+  <li>Join <strong>{{ ssid }}</strong> with the WiFi password you chose</li>
+  <li>That's it — everything on that WiFi is now protected</li>
+</ol>
+<div class="card mt-4" style="padding:14px">
+  <div class="text-sm text-muted">Dashboard (while on your new WiFi)</div>
+  <div style="font-weight:600">http://{{ lan_gw }}</div>
+  <div class="text-xs text-muted mt-1">or http://{{ host_mdns }} · user <strong>admin</strong> + your dashboard password</div>
+</div>
+<p class="text-xs text-muted mt-3">You can close this page.</p>
+{% endblock %}

@@ -1,0 +1,7 @@
+build/
+.git/
+.playwright-mcp/
+*.png
+**/__pycache__/
+.claude/
+CREDENTIALS.local.md
