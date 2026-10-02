@@ -30,7 +30,7 @@ case "${1:-status}" in
   on)
     setup_done && { echo "setup already complete"; exit 0; }
     rules
-    systemctl start --no-block privacypi-setup-dns.service 2>/dev/null || true
+    systemctl start privacypi-setup-dns.service 2>/dev/null || true
     echo "setup mode on"
     ;;
   rules)

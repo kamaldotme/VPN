@@ -1,7 +1,8 @@
 [Unit]
 Description=PrivacyPi base firewall
-After=network-online.target
-Wants=network-online.target
+# Deliberately NOT ordered after network-online: the firewall and the captive
+# setup rules must be in place before the WiFi starts broadcasting, uplink or not.
+After=privacypi-init.service systemd-networkd.service
 
 [Service]
 Type=oneshot

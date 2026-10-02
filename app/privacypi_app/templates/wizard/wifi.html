@@ -8,24 +8,6 @@
   <div class="field"><label>WiFi name</label><input name="ssid" value="{{ form.ssid }}" maxlength="32" placeholder="e.g. Home-Private" required autofocus></div>
   <div class="field"><label>WiFi password (8 or more characters)</label><input type="password" name="psk" minlength="8" maxlength="63" autocomplete="new-password" required></div>
   <div class="field"><label>Type it again</label><input type="password" name="psk2" minlength="8" maxlength="63" autocomplete="new-password" required></div>
-  <div class="field">
-    <label>Country (sets the legal WiFi channels)</label>
-    <select name="country" id="country" required>
-      {% for code, name in countries %}<option value="{{ code }}" {% if code == form.country %}selected{% endif %}>{{ name }}</option>{% endfor %}
-    </select>
-  </div>
   <button class="btn btn-primary" style="width:100%">Continue →</button>
 </form>
-<script>
-// Pre-select the country from this device's language settings on first visit.
-(function () {
-  var sel = document.getElementById('country');
-  if ({{ 'true' if form.ssid else 'false' }}) return;
-  var langs = navigator.languages || [navigator.language || ''];
-  for (var i = 0; i < langs.length; i++) {
-    var m = /[-_]([A-Za-z]{2})$/.exec(langs[i]);
-    if (m && sel.querySelector('option[value="' + m[1].toUpperCase() + '"]')) { sel.value = m[1].toUpperCase(); return; }
-  }
-})();
-</script>
 {% endblock %}

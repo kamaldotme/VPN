@@ -50,7 +50,10 @@ oper() { cat "/sys/class/net/$1/operstate" 2>/dev/null || echo "missing"; }
 
 wifi_associated() {
   [[ -n "$WIFI_WAN_IFACE" ]] || return 1
-  wpa_cli -i "$WIFI_WAN_IFACE" status 2>/dev/null | grep -q '^wpa_state=COMPLETED'
+  # Not wpa_cli: it opens a reply socket under /tmp, and the dashboard runs
+  # with a private /tmp, so wpa_supplicant's answer never arrives and every
+  # call hangs for ~10 s (seen on hardware as a "timeout" in the wizard).
+  iw dev "$WIFI_WAN_IFACE" link 2>/dev/null | grep -q '^Connected to'
 }
 
 reapply_routing() {

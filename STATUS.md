@@ -5,7 +5,8 @@ and finishes a short wizard — no terminal, SSH or monitor. Supported: Raspberr
 
 **Where we are (v2.6.0):** the flashed image works on a real Pi 4 (tested 2026-10-02, no cable,
 Edimax EW-7811Un plugged in): first boot, setup WiFi, wizard, restart, private WiFi, Tor mode and
-.onion sites all worked. VPN connect is still untested on hardware.
+.onion sites all worked. NordVPN (server auto-pick, Australia) connected from the dashboard and came
+back by itself after a reboot.
 
 ## Hardware test results (Pi 4 + Edimax EW-7811Un, 2026-10-02)
 - ✅ Built-in radio (brcmfmac) as access point; restarting it is safe.
@@ -14,8 +15,10 @@ Edimax EW-7811Un plugged in): first boot, setup WiFi, wizard, restart, private W
 - ✅ Wizard end to end, restart after Finish, clients online through Tor, .onion sites.
 - ❌ **Edimax (rtl8192cu) as access point freezes the whole Pi** when hostapd is restarted — hence
   the role policy: built-in radio is always the AP, USB adapters are the uplink.
+- ✅ NordVPN from the dashboard: connect, client exits in the chosen country, auto-reconnect after reboot.
 - ⚠️ Setup page did not pop up by itself on an Android phone (had to open http://10.10.10.1).
-- ⚠️ Wizard Internet step: connecting to a WiFi the Pi is already on showed "timeout" (join itself is fine).
+  Suspected cause fixed (WiFi now starts only after the captive portal is ready) — needs a re-test.
+- ✅ fixed: wizard Internet step "timeout" (wpa_cli cannot answer inside the dashboard sandbox).
 
 ## Done (code + container tests)
 - [x] Port to Raspberry Pi OS Lite 64-bit (Debian 13); pure systemd-networkd.

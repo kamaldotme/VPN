@@ -116,9 +116,19 @@ def home():
 
 @bp.route("/welcome", methods=["GET", "POST"])
 def welcome():
+    site = read_site_conf()
     if request.method == "POST":
-        return redirect(url_for("wizard.admin"))
-    return render_template("wizard/welcome.html")
+        # Asked first: the country decides which WiFi channels may be used, so
+        # it has to be known before the home-WiFi scan on the Internet step.
+        country = (request.form.get("country") or "").upper()
+        if country not in COUNTRY_CODES:
+            flash("Choose your country.", "error")
+        else:
+            run_script("ap-config", ["country", country])
+            return redirect(url_for("wizard.admin"))
+    return render_template("wizard/welcome.html", countries=COUNTRIES,
+                           country=site.get("WIFI_COUNTRY", "US"),
+                           country_chosen=bool(session.get("wizard_uid")))
 
 
 @bp.post("/clock")
@@ -195,13 +205,12 @@ def wan_wifi():
 @bp.route("/wifi", methods=["GET", "POST"])
 def wifi():
     site = read_site_conf()
-    form = {"ssid": "", "country": site.get("WIFI_COUNTRY", "US")}
+    form = {"ssid": ""}
     if request.method == "POST":
         ssid = (request.form.get("ssid") or "").strip()
         psk = request.form.get("psk") or ""
         psk2 = request.form.get("psk2") or ""
-        country = (request.form.get("country") or "").upper()
-        form = {"ssid": ssid, "country": country}
+        form = {"ssid": ssid}
         if not SSID_RE.match(ssid):
             flash("Network name: 1–32 characters — letters, numbers, spaces, dot, dash or underscore.", "error")
         elif ssid.lower() == "privacypi-setup":
@@ -212,18 +221,15 @@ def wifi():
             flash("The two WiFi passwords don't match.", "error")
         elif psk == "privacypi":
             flash("Pick a password of your own — not the setup password.", "error")
-        elif country not in COUNTRY_CODES:
-            flash("Choose your country.", "error")
         else:
-            # Stored now, applied (WiFi restart) by the last step.
-            rc, out, err = run_script("ap-config", ["country", country])
+            # Stored now, applied by the restart at the last step.
             rc, out, err = run_script("ap-config", ["set", ssid, "-"], stdin=psk)
             res = _json_out(out, err)
             if res.get("ok"):
                 session["wizard_ssid"] = ssid
                 return redirect(url_for("wizard.mode"))
             flash(res.get("error", "Could not save the WiFi settings."), "error")
-    return render_template("wizard/wifi.html", countries=COUNTRIES, form=form)
+    return render_template("wizard/wifi.html", form=form)
 
 
 @bp.route("/mode", methods=["GET", "POST"])

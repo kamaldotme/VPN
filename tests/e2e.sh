@@ -81,13 +81,13 @@ echo "== wizard walk-through (as a browser)"
 J=/root/jar
 tok() { cli "curl -s -c $J -b $J http://10.10.10.1$1" | sed -n 's/.*name="csrf_token" value="\([^"]*\)".*/\1/p' | head -1; }
 post() { local path="$1"; shift; local t; t=$(tok "$path"); cli "curl -s -o /root/resp.html -w '%{http_code} %{redirect_url}' -c $J -b $J -e http://10.10.10.1$path --data-urlencode csrf_token=$t $* http://10.10.10.1$path"; }
-r=$(post /setup/welcome);                                   [[ "$r" == "302 http://10.10.10.1/setup/admin" ]] && ok "welcome → password" || bad "welcome" "$r"
+r=$(post /setup/welcome "-d country=IN");                   [[ "$r" == "302 http://10.10.10.1/setup/admin" ]] && ok "welcome (country) → password" || bad "welcome" "$r"
 r=$(post /setup/admin "-d password=short -d password2=short"); [[ "$r" == 200* ]] && ok "short password rejected" || bad "short pw" "$r"
 r=$(post /setup/admin "-d password=TestPass-2026 -d password2=TestPass-2026"); [[ "$r" == "302 http://10.10.10.1/setup/internet" ]] && ok "password set → internet" || bad "admin" "$r"
 check "internet step shows connection state" cli "curl -fs -b $J http://10.10.10.1/setup/wan/status | grep -q '\"ok\": *true'"
 r=$(post /setup/internet);                                  [[ "$r" == "302 http://10.10.10.1/setup/wifi" ]] && ok "internet → wifi" || bad "internet" "$r"
-r=$(post /setup/wifi "--data-urlencode 'ssid=bad;name' -d psk=MyWifiPass99 -d psk2=MyWifiPass99 -d country=IN"); [[ "$r" == 200* ]] && ok "unsafe WiFi name rejected" || bad "ssid validation" "$r"
-r=$(post /setup/wifi "--data-urlencode 'ssid=Mogli Home' -d psk=MyWifiPass99 -d psk2=MyWifiPass99 -d country=IN"); [[ "$r" == "302 http://10.10.10.1/setup/mode" ]] && ok "wifi saved → mode" || bad "wifi" "$r $(x 'grep -o "toast[^<]*<[^<]*" /root/resp.html | head -2')"
+r=$(post /setup/wifi "--data-urlencode 'ssid=bad;name' -d psk=MyWifiPass99 -d psk2=MyWifiPass99"); [[ "$r" == 200* ]] && ok "unsafe WiFi name rejected" || bad "ssid validation" "$r"
+r=$(post /setup/wifi "--data-urlencode 'ssid=Mogli Home' -d psk=MyWifiPass99 -d psk2=MyWifiPass99"); [[ "$r" == "302 http://10.10.10.1/setup/mode" ]] && ok "wifi saved → mode" || bad "wifi" "$r $(x 'grep -o "toast[^<]*<[^<]*" /root/resp.html | head -2')"
 r=$(post /setup/mode "-d mode=direct");                      [[ "$r" == "302 http://10.10.10.1/setup/done" ]] && ok "mode → done" || bad "mode" "$r"
 r=$(post /setup/done);                                      [[ "$r" == 200* ]] && cli "grep -q 'PrivacyPi is ready' /root/resp.html" && ok "finish page shown" || bad "finish" "$r"
 echo "  (PrivacyPi restarts itself after the wizard…)"

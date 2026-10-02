@@ -11,10 +11,26 @@
 </ol>
 <form method="post">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+  <div class="field">
+    <label>Your country (sets the legal WiFi channels)</label>
+    <select name="country" id="country" required>
+      {% for code, name in countries %}<option value="{{ code }}" {% if code == country %}selected{% endif %}>{{ name }}</option>{% endfor %}
+    </select>
+  </div>
   <button class="btn btn-primary" style="width:100%">Get started →</button>
 </form>
 <script>
 // The Pi has no battery clock — give it the time from this device.
+// Pre-select the country from this device's language settings.
+(function () {
+  var sel = document.getElementById('country');
+  if ({{ 'true' if country_chosen else 'false' }}) return;
+  var langs = navigator.languages || [navigator.language || ''];
+  for (var i = 0; i < langs.length; i++) {
+    var m = /[-_]([A-Za-z]{2})$/.exec(langs[i]);
+    if (m && sel.querySelector('option[value="' + m[1].toUpperCase() + '"]')) { sel.value = m[1].toUpperCase(); return; }
+  }
+})();
 window.addEventListener('load', function () {
   var fd = new FormData();
   fd.append('epoch', Math.floor(Date.now() / 1000));

@@ -1,7 +1,6 @@
 [Unit]
 Description=Restore PrivacyPi active VPN mode on boot
-After=privacypi-firewall.service network-online.target
-Wants=network-online.target
+After=privacypi-firewall.service
 Requires=privacypi-firewall.service
 
 [Service]

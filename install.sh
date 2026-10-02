@@ -209,6 +209,13 @@ Restart=on-failure
 RestartSec=3
 EOF
 done
+# The WiFi must not appear before everything behind it is ready. A phone that
+# joins the setup network a few seconds too early finds no captive portal,
+# decides "no internet" and never shows the sign-in page (seen on hardware).
+cat > /etc/systemd/system/hostapd.service.d/20-privacypi-order.conf <<'EOF'
+[Unit]
+After=privacypi-firewall.service privacypi-vpn-up.service privacypi-setup-mode.service privacypi-setup-dns.service dnsmasq.service caddy.service privacypi-flask.service AdGuardHome.service
+EOF
 install -d /etc/systemd/system/tor@default.service.d
 cat > /etc/systemd/system/tor@default.service.d/10-privacypi.conf <<'EOF'
 [Unit]

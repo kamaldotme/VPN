@@ -1,6 +1,7 @@
 [Unit]
 Description=PrivacyPi setup mode (captive setup network until the wizard is finished)
 After=privacypi-vpn-up.service
+Before=hostapd.service
 ConditionPathExists=!/etc/privacypi/setup-complete
 
 [Service]
