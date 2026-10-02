@@ -1,6 +1,16 @@
 {% extends "base.html" %}
 {% block title %}Set up PrivacyPi{% endblock %}
 {% block content %}
-<p class="text-xs text-muted" style="margin:-12px 0 16px">{% block step %}{% endblock %}</p>
+{# Each step page sets step_n (1..steps_total); 0 = intro, 99 = finished. #}
+{% set step_now = self.step_n()|trim|int %}
+<div class="wizard-progress">
+  <p class="wizard-progress-label">{% block step %}{% endblock %}</p>
+  {% if step_now %}
+  <ol class="wizard-dots" aria-hidden="true">
+    {% for i in range(1, steps_total + 1) %}<li class="{{ 'done' if i < step_now else ('current' if i == step_now else '') }}"></li>{% endfor %}
+  </ol>
+  {% endif %}
+</div>
 {% block wizard %}{% endblock %}
 {% endblock %}
+{% block step_n %}0{% endblock %}

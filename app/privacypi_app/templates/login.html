@@ -1,18 +1,24 @@
 {% extends "base.html" %}
 {% block title %}Sign in · PrivacyPi{% endblock %}
 {% block content %}
-<h2>Sign in</h2>
-<div class="sub">Welcome back to your privacy router.</div>
-<form method="post" novalidate>
+<h1>Sign in</h1>
+<p class="sub">Welcome back to your privacy router.</p>
+<form method="post">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
   <div class="field">
-    <label>Username</label>
-    <input name="username" autofocus required autocomplete="username">
+    <label for="login-username">Username</label>
+    <input id="login-username" name="username" autofocus required autocomplete="username"
+           autocapitalize="none" autocorrect="off" spellcheck="false" aria-describedby="login-username-hint">
+    <p class="field-hint" id="login-username-hint">Usually <strong>admin</strong>.</p>
   </div>
   <div class="field">
-    <label>Password</label>
-    <input type="password" name="password" required autocomplete="current-password">
+    <label for="login-password">Password</label>
+    <input id="login-password" type="password" name="password" required autocomplete="current-password">
   </div>
-  <button class="btn btn-primary" type="submit" style="width:100%">Continue →</button>
+  <label class="check">
+    <input type="checkbox" name="remember" value="1">
+    <span>Keep me signed in on this device</span>
+  </label>
+  <button class="btn btn-primary btn-block btn-lg" type="submit">Sign in</button>
 </form>
 {% endblock %}

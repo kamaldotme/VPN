@@ -13,7 +13,7 @@ systemctl stop privacypi-flask privacypi-openvpn wg-quick@wg0 wg-quick@wg-srv Ad
 
 rm -f /var/lib/privacypi/privacypi.db* /var/lib/privacypi/active-vpn
 rm -rf /var/lib/privacypi/* /var/log/privacypi/* 2>/dev/null || true
-rm -f "$ETC/setup-complete" "$ETC/.provisioned" "$ETC/wifi-psk.txt" "$ETC/adguard.creds" \
+rm -f "$ETC/setup-complete" "$ETC/.provisioned" "$ETC/wifi-psk.txt" "$ETC/adguard.creds" "$ETC/adguard.cred" \
       "$ETC/master.key" "$ETC/secret.key" "$ETC/secret.env" "$ETC/alert.secret" "$ETC/last-mode"
 rm -rf "$ETC/vpn"
 rm -f /opt/AdGuardHome/AdGuardHome.yaml

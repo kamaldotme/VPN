@@ -1,153 +1,278 @@
 {% extends "base.html" %}
 {% block heading %}Trust this device{% endblock %}
-{% block subheading %}Install the PrivacyPi root CA once — no more cert warnings.{% endblock %}
+{% block subheading %}Optional: open this dashboard over a secure (https) connection without browser warnings.{% endblock %}
 {% block content %}
+<style>
+  .tr-page [hidden] { display: none !important; }
+  .tr-page .btn { min-height: 44px; }
+  .tr-page .btn:disabled, .tr-page .btn[aria-disabled=true] { opacity: .5; cursor: not-allowed; }
+  .tr-page .btn:focus-visible, .tr-page summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .tr-page input { min-height: 44px; font-size: 16px; }
+  .tr-page .text-muted { color: var(--text-1); }
+  .tr-page code { overflow-wrap: anywhere; word-break: break-word; }
+  .tr-note { border: 1px solid var(--border-strong); background: var(--bg-2); border-radius: var(--radius);
+    padding: 12px 14px; font-size: 13px; color: var(--text-1); }
+  .tr-note.warn { border-color: rgba(251,191,36,.35); background: rgba(251,191,36,.08); color: var(--text-0); }
+  .tr-os { border-top: 1px solid var(--border); }
+  .tr-os:first-of-type { border-top: none; }
+  .tr-os > summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; font-weight: 600; font-size: 14px; color: var(--accent); }
+  .tr-os ol { font-size: 13px; line-height: 1.7; margin: 4px 0 14px; padding-left: 22px; color: var(--text-0); }
+  .tr-os li { margin-bottom: 6px; }
+  .tr-os pre { margin: 4px 0 14px; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .tr-row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .tr-row > input { flex: 1 1 200px; width: auto; min-width: 0; }
+  .tr-words { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 6px 12px;
+    background: var(--bg-0); border: 1px solid var(--border-strong); padding: 14px; border-radius: var(--radius-sm);
+    font-family: 'JetBrains Mono', 'SF Mono', Menlo, monospace; font-size: 14px; color: #fff; list-style: none; margin: 0; }
+  .tr-words li { white-space: nowrap; }
+  .tr-words li span { color: var(--text-1); display: inline-block; min-width: 2.2em; }
+  .tr-fp { font-size: 12px; color: var(--text-1); margin: 12px 0 0; overflow-wrap: anywhere; }
+</style>
+
+<div class="tr-page">
 
 <div class="card mb-4">
-  <p class="card-title">Why this exists</p>
-  <p class="text-sm text-muted">
-    A LAN router can't get a public TLS certificate (no public domain), so PrivacyPi
-    runs its own tiny certificate authority. After you install the root cert below
-    on each of your devices, every visit to <code>https://{{ host_mdns }}</code> or
-    <code>https://{{ host_ip }}</code> becomes a trusted, green-padlock connection.
-    No browser warnings, ever.
+  <p class="card-title">Do I need this?</p>
+  <p class="text-sm text-muted" style="margin:0 0 10px">
+    <strong style="color:var(--text-0)">No — this is optional.</strong>
+    The dashboard works fine at <code>http://{{ lan_gw }}</code> while you are on PrivacyPi's own WiFi.
+  </p>
+  <p class="text-sm text-muted" style="margin:0">
+    If you prefer a secure <code>https://</code> address with a padlock, your browser first has to be told
+    to trust this PrivacyPi. You do that once per phone or computer by installing a small
+    "certificate" file — a kind of ID card that PrivacyPi made for itself. PrivacyPi uses it
+    only for this dashboard. Install it only on your own devices, and only from your own PrivacyPi.
+  </p>
+  <p id="tls-state" class="tr-note mt-3" role="status" aria-live="polite">Checking whether secure access is switched on…</p>
+</div>
+
+<div class="card mb-4">
+  <p class="card-title">Step 1 — Download the certificate</p>
+  <p class="text-sm text-muted mb-3">Do this on the phone or computer you want to set up.</p>
+  <a class="btn btn-primary" id="crt-dl" href="/pi-root.crt" download="privacypi-root.crt">Download certificate</a>
+  <p class="tr-fp">
+    For experts — fingerprint to verify the file (SHA-256): <code id="fp">checking…</code>
   </p>
 </div>
 
 <div class="card mb-4">
-  <p class="card-title">1. Download the root certificate</p>
+  <p class="card-title">Step 2 — Install it on your device</p>
+  <p class="text-sm text-muted mb-3">Tap your type of device for instructions. The certificate is listed as <b>Caddy Local Authority</b>.</p>
+
+  <details class="tr-os" data-os="ios">
+    <summary>iPhone / iPad</summary>
+    <ol>
+      <li>Open this page in <b>Safari</b> and tap <b>Download certificate</b>. Tap <b>Allow</b> when asked.</li>
+      <li>Open <b>Settings</b> → <b>General</b> → <b>VPN &amp; Device Management</b> → tap <b>Caddy Local Authority</b> → <b>Install</b>.</li>
+      <li>Open <b>Settings</b> → <b>General</b> → <b>About</b> → <b>Certificate Trust Settings</b> and switch <b>Caddy Local Authority</b> on.</li>
+    </ol>
+  </details>
+  <details class="tr-os" data-os="android">
+    <summary>Android</summary>
+    <ol>
+      <li>Tap <b>Download certificate</b> to save the file.</li>
+      <li>Open <b>Settings</b> → <b>Security</b> → <b>Encryption &amp; credentials</b> → <b>Install a certificate</b> → <b>CA certificate</b>. (On some phones, search Settings for "certificate".)</li>
+      <li>Choose <code>privacypi-root.crt</code> and confirm.</li>
+      <li>Good to know: Chrome will now trust the dashboard. Firefox and some other apps ignore certificates you install yourself and may still warn.</li>
+    </ol>
+  </details>
+  <details class="tr-os" data-os="mac">
+    <summary>Mac</summary>
+    <ol>
+      <li>Double-click <code>privacypi-root.crt</code>. The Keychain Access app opens.</li>
+      <li>Choose the <b>System</b> keychain (not "login") and enter your Mac password.</li>
+      <li>Find <b>Caddy Local Authority</b> in the list and double-click it.</li>
+      <li>Open <b>Trust</b> and set <b>When using this certificate</b> to <b>Always Trust</b>.</li>
+      <li>Close the window and confirm with Touch ID or your password.</li>
+    </ol>
+  </details>
+  <details class="tr-os" data-os="windows">
+    <summary>Windows</summary>
+    <ol>
+      <li>Right-click <code>privacypi-root.crt</code> and choose <b>Install Certificate</b>.</li>
+      <li>Choose <b>Local Machine</b>, then <b>Place all certificates in the following store</b> → <b>Trusted Root Certification Authorities</b>.</li>
+      <li>Click <b>Finish</b>, then close and reopen your browser.</li>
+    </ol>
+  </details>
+  <details class="tr-os" data-os="firefox">
+    <summary>Firefox (on any computer)</summary>
+    <ol>
+      <li>Firefox keeps its own list of trusted certificates, so it needs this extra step.</li>
+      <li>Open Firefox <b>Settings</b> → <b>Privacy &amp; Security</b> → scroll to <b>Certificates</b> → <b>View Certificates</b> → <b>Authorities</b> → <b>Import</b>.</li>
+      <li>Choose <code>privacypi-root.crt</code>, tick <b>Trust this CA to identify websites</b>, then OK.</li>
+    </ol>
+  </details>
+  <details class="tr-os" data-os="linux">
+    <summary>Linux (Debian / Ubuntu)</summary>
+    <p class="text-sm text-muted" style="margin:4px 0 8px">Run these two commands in a terminal, in the folder where you saved the file:</p>
+    <pre class="text-xs" tabindex="0">sudo cp privacypi-root.crt /usr/local/share/ca-certificates/privacypi-root.crt
+sudo update-ca-certificates</pre>
+    <p class="text-sm text-muted" style="margin:0 0 14px">If you use Firefox, also follow the Firefox steps above.</p>
+  </details>
+</div>
+
+<div class="card mb-4">
+  <p class="card-title">Step 3 — Check that it worked</p>
   <p class="text-sm text-muted mb-3">
-    Fingerprint:
-    <code class="text-accent" id="fp">loading…</code>
-    — verify this matches the sticker on the Pi or the value on the
-    <a href="/system" class="text-accent">System</a> page.
+    Open one of these addresses. You should see a padlock and no warning. If you still get a warning,
+    close and reopen the browser and try again.
   </p>
-  <a class="btn btn-primary" href="/pi-root.crt" download="privacypi-root.crt">⬇ Download privacypi-root.crt</a>
+  <p class="text-sm" style="margin:0;line-height:2">
+    <a class="text-accent" href="https://{{ host_mdns }}/" rel="noopener">https://{{ host_mdns }}/</a><br>
+    <a class="text-accent" href="https://{{ host_ip }}/" rel="noopener">https://{{ host_ip }}/</a>
+  </p>
 </div>
 
-<div class="card mb-4">
-  <p class="card-title">2. Install it</p>
-  <details open>
-    <summary class="text-accent" style="cursor:pointer">macOS</summary>
-    <ol class="text-sm" style="line-height:1.8;margin-top:8px">
-      <li>Double-click <code>privacypi-root.crt</code> — Keychain Access opens.</li>
-      <li>Choose <b>System</b> keychain (not "login"), enter your admin password.</li>
-      <li>Find <b>Caddy Local Authority</b>, double-click it.</li>
-      <li>Expand <b>Trust</b> → set <b>"When using this certificate"</b> to <b>Always Trust</b>.</li>
-      <li>Close — confirm with Touch ID / password. Done.</li>
-    </ol>
-  </details>
-  <details>
-    <summary class="text-accent" style="cursor:pointer">iOS / iPadOS</summary>
-    <ol class="text-sm" style="line-height:1.8;margin-top:8px">
-      <li>Open this page in <b>Safari</b> and tap the download link — accept "Allow" on the profile prompt.</li>
-      <li><b>Settings</b> → <b>General</b> → <b>VPN &amp; Device Management</b> → tap <b>Caddy Local Authority</b> → <b>Install</b>.</li>
-      <li><b>Settings</b> → <b>General</b> → <b>About</b> → <b>Certificate Trust Settings</b> → toggle <b>Caddy Local Authority</b> to ON.</li>
-    </ol>
-  </details>
-  <details>
-    <summary class="text-accent" style="cursor:pointer">Android</summary>
-    <ol class="text-sm" style="line-height:1.8;margin-top:8px">
-      <li>Save the file to your device.</li>
-      <li><b>Settings</b> → <b>Security</b> → <b>Encryption &amp; credentials</b> → <b>Install a certificate</b> → <b>CA certificate</b>.</li>
-      <li>Pick <code>privacypi-root.crt</code>. Confirm.</li>
-      <li>Note: Chrome on Android only trusts user-installed CAs for system-level apps; some apps still warn. Firefox uses its own store and ignores OS CAs entirely.</li>
-    </ol>
-  </details>
-  <details>
-    <summary class="text-accent" style="cursor:pointer">Windows</summary>
-    <ol class="text-sm" style="line-height:1.8;margin-top:8px">
-      <li>Right-click <code>privacypi-root.crt</code> → <b>Install Certificate</b>.</li>
-      <li>Store location: <b>Local Machine</b> (admin needed) → <b>Place all certificates in</b>: <b>Trusted Root Certification Authorities</b>.</li>
-      <li>Finish. Restart any open browser.</li>
-    </ol>
-  </details>
-  <details>
-    <summary class="text-accent" style="cursor:pointer">Linux (Debian / Ubuntu)</summary>
-    <pre class="text-xs" style="margin-top:8px;background:#0a0a0a;padding:12px;border-radius:6px">sudo cp privacypi-root.crt /usr/local/share/ca-certificates/privacypi-root.crt
-sudo update-ca-certificates
-# For Firefox: about:preferences#privacy → Certificates → Import</pre>
-  </details>
-  <details>
-    <summary class="text-accent" style="cursor:pointer">Firefox (any OS)</summary>
-    <ol class="text-sm" style="line-height:1.8;margin-top:8px">
-      <li>Firefox uses its own trust store (independent of the OS).</li>
-      <li><b>about:preferences#privacy</b> → scroll to <b>Certificates</b> → <b>View Certificates…</b> → <b>Authorities</b> tab → <b>Import</b>.</li>
-      <li>Pick <code>privacypi-root.crt</code>, check <b>Trust this CA to identify websites</b>, OK.</li>
-    </ol>
-  </details>
-</div>
-
-<div class="card mb-4" style="border-color:rgba(248,113,113,0.3)">
-  <p class="card-title text-danger">🗝️ Master-key recovery seed</p>
+<div class="card" style="border-color:rgba(248,113,113,0.3)">
+  <p class="card-title text-danger">Emergency recovery words</p>
   <p class="text-sm text-muted mb-3">
-    The master key encrypts every saved proxy URL (and future encrypted credentials).
-    If the SD card dies, only this seed can rebuild the key. Print these 24 words on
-    paper, store in a safe. Anyone with the words can decrypt your vault.
+    PrivacyPi locks the secrets you save (such as proxy passwords) with a secret key kept on its memory card.
+    These 24 words are a paper copy of that key. If the memory card ever fails, the words are the only way to
+    unlock those saved secrets again.
   </p>
-  <p class="text-xs text-warn mb-3">
-    ⚠️ The words appear ONCE on screen. They are never logged, never persisted in the
-    DB, and the page wipes them after 60 seconds.
-  </p>
-  <form id="seed-form" class="flex gap-2 mb-3">
-    <input type="password" id="seed-pw" placeholder="confirm admin password" style="flex:1">
-    <button class="btn btn-danger" type="submit">Show seed</button>
-  </form>
-  <div id="seed-output" style="display:none">
-    <div id="seed-words" style="background:#0a0a0a;padding:16px;border-radius:6px;
-         font-family:'JetBrains Mono',monospace;font-size:14px;line-height:2;letter-spacing:.5px"></div>
-    <p class="text-xs text-muted mt-2">Auto-clearing in <span id="seed-countdown">60</span>s.</p>
+  <div class="tr-note warn mb-3">
+    <strong>Write the words on paper and keep the paper somewhere safe.</strong>
+    Do not take a screenshot or photo, and never type them into a website or message.
+    Anyone who has these words can unlock your saved secrets. The words disappear from the screen after 60 seconds.
   </div>
+  <form id="seed-form">
+    <label for="seed-pw" class="text-sm" style="display:block;margin-bottom:6px">Type your dashboard password to show the words</label>
+    <div class="tr-row">
+      <input type="password" id="seed-pw" autocomplete="current-password" required>
+      <button class="btn btn-danger" type="submit" id="seed-btn">Show recovery words</button>
+    </div>
+  </form>
+  <div id="seed-output" class="mt-3" hidden>
+    <ol id="seed-words" class="tr-words" aria-label="Your 24 recovery words, in order"></ol>
+    <div class="tr-row mt-3" style="align-items:center">
+      <button class="btn" type="button" id="seed-hide">Hide now</button>
+      <span class="text-xs text-muted">Hiding automatically in <span id="seed-countdown">60</span> seconds.</span>
+    </div>
+  </div>
+  <p id="seed-status" class="text-sm mt-3" role="status" aria-live="polite" style="min-height:1.4em;margin-bottom:0"></p>
 </div>
 
-<div class="card">
-  <p class="card-title">3. Confirm</p>
-  <p class="text-sm text-muted mb-3">
-    Reload <a href="/" class="text-accent">the dashboard</a> over HTTPS. The address bar should show a clean
-    padlock (no "Not Secure", no warning).
-  </p>
-  <p class="text-xs text-muted">
-    Working URLs:
-    <code>https://{{ host_mdns }}/</code> &nbsp;·&nbsp;
-    <code>https://{{ host_ip }}/</code>
-  </p>
 </div>
 
 <script>
-fetch('/api/tls/status').then(r => r.json()).then(d => {
-  const fp = document.getElementById('fp');
-  fp.textContent = d.root_fingerprint || '(not yet generated)';
-});
+(function () {
+  const $ = id => document.getElementById(id);
 
-document.getElementById('seed-form').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const fd = new FormData();
-  fd.append('password', document.getElementById('seed-pw').value);
-  const r = await fetch('/api/recovery/export', {method:'POST', body:fd, headers: csrfHeaders()});
-  const d = await r.json();
-  document.getElementById('seed-pw').value = '';
-  if (!d.ok) { window.toast('Failed: ' + (d.error||''), 'danger'); return; }
-  const out = document.getElementById('seed-output');
-  const wrap = document.getElementById('seed-words');
-  wrap.replaceChildren();
-  const words = d.mnemonic.split(/\s+/);
-  words.forEach((w, i) => {
-    const span = document.createElement('span');
-    span.style.cssText = 'display:inline-block;width:25%;color:#fff';
-    span.textContent = (i+1).toString().padStart(2,' ') + '. ' + w;
-    wrap.appendChild(span);
-  });
-  out.style.display = 'block';
-  let n = 60;
-  const cd = document.getElementById('seed-countdown');
-  const interval = setInterval(() => {
-    n--; cd.textContent = n;
-    if (n <= 0) {
-      clearInterval(interval);
-      wrap.replaceChildren();
-      out.style.display = 'none';
+  // Open the instructions that match this device.
+  (function () {
+    const ua = navigator.userAgent || '';
+    let os = '';
+    if (/iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1)) os = 'ios';
+    else if (/Android/.test(ua)) os = 'android';
+    else if (/Firefox\//.test(ua)) os = 'firefox';
+    else if (/Macintosh/.test(ua)) os = 'mac';
+    else if (/Windows/.test(ua)) os = 'windows';
+    else if (/Linux/.test(ua)) os = 'linux';
+    const d = os && document.querySelector('.tr-os[data-os="' + os + '"]');
+    if (d) d.open = true;
+  })();
+
+  // Is secure access switched on, and is there a certificate to download?
+  function noCert(message) {
+    const st = $('tls-state'), dl = $('crt-dl');
+    st.className = 'tr-note warn mt-3';
+    st.textContent = message;
+    $('fp').textContent = 'not available';
+    dl.setAttribute('aria-disabled', 'true');
+    dl.dataset.off = '1';
+  }
+  $('crt-dl').addEventListener('click', e => {
+    if (e.currentTarget.dataset.off) {
+      e.preventDefault();
+      window.toast('There is no certificate to download yet — secure access is not switched on on this PrivacyPi.', 'danger');
     }
-  }, 1000);
-});
+  });
+  (async function () {
+    try {
+      const r = await fetch('/api/tls/status');
+      const d = await r.json();
+      if (d && d.root_fingerprint) {
+        $('fp').textContent = d.root_fingerprint;
+        const st = $('tls-state');
+        st.className = 'tr-note mt-3';
+        st.textContent = location.protocol === 'https:'
+          ? 'Secure access is switched on, and you are using it right now.'
+          : 'Secure access is switched on. Follow the three steps below to use it without warnings.';
+      } else {
+        noCert('Secure (https) access is not switched on on this PrivacyPi, so there is no certificate to install yet. That is fine — keep using http://{{ lan_gw }} on PrivacyPi\'s WiFi.');
+      }
+    } catch (e) {
+      $('tls-state').textContent = 'Could not check whether secure access is switched on. Reload the page to try again.';
+      $('fp').textContent = 'not available';
+    }
+  })();
+
+  // Recovery words
+  let timer = null;
+  function hideSeed() {
+    if (timer) { clearInterval(timer); timer = null; }
+    $('seed-words').replaceChildren();
+    $('seed-output').hidden = true;
+  }
+  $('seed-hide').addEventListener('click', () => {
+    hideSeed();
+    $('seed-status').className = 'text-sm mt-3 text-muted';
+    $('seed-status').textContent = 'The words are hidden again.';
+  });
+  window.addEventListener('pagehide', hideSeed);
+
+  $('seed-form').addEventListener('submit', async e => {
+    e.preventDefault();
+    const btn = $('seed-btn'), st = $('seed-status'), pwEl = $('seed-pw');
+    if (!pwEl.value) { pwEl.focus(); return; }
+    if (!confirm('Show the 24 recovery words on this screen?\n\nMake sure nobody else can see your screen, and have pen and paper ready. They stay visible for 60 seconds.')) return;
+    hideSeed();
+    st.textContent = '';
+    btn.disabled = true; btn.textContent = 'Checking…';
+    try {
+      const fd = new FormData();
+      fd.append('password', pwEl.value);
+      const r = await fetch('/api/recovery/export', {method: 'POST', body: fd, headers: csrfHeaders()});
+      let d = null;
+      try { d = await r.json(); } catch (err) {}
+      pwEl.value = '';
+      if (!d || !d.ok || !d.mnemonic) {
+        st.className = 'text-sm mt-3 text-danger';
+        st.textContent = r.status === 401 ? 'That password is not right. Type your dashboard password and try again.'
+          : (r.redirected ? 'You were signed out. Reload the page and sign in again.'
+                          : 'The recovery words could not be shown right now. Please try again later.');
+        return;
+      }
+      const wrap = $('seed-words');
+      String(d.mnemonic).trim().split(/\s+/).forEach((w, i) => {
+        const li = document.createElement('li');
+        const n = document.createElement('span');
+        n.textContent = (i + 1) + '.';
+        li.appendChild(n);
+        li.appendChild(document.createTextNode(w));
+        wrap.appendChild(li);
+      });
+      $('seed-output').hidden = false;
+      st.className = 'text-sm mt-3';
+      st.textContent = 'Write down all 24 words in order, including the numbers.';
+      let n = 60;
+      const cd = $('seed-countdown');
+      cd.textContent = n;
+      timer = setInterval(() => {
+        n--; cd.textContent = n;
+        if (n <= 0) {
+          hideSeed();
+          st.className = 'text-sm mt-3 text-muted';
+          st.textContent = 'The words were hidden after 60 seconds. Type your password again if you need more time.';
+        }
+      }, 1000);
+    } catch (err) {
+      st.className = 'text-sm mt-3 text-danger';
+      st.textContent = 'Could not reach PrivacyPi. Make sure you are still connected to its WiFi, then try again.';
+    } finally {
+      btn.disabled = false; btn.textContent = 'Show recovery words';
+    }
+  });
+})();
 </script>
 {% endblock %}

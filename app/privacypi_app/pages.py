@@ -56,7 +56,7 @@ def tor():
 @bp.get("/dns")
 @login_required
 def dns():
-    profiles = ["Light", "Standard", "Strict", "Family", "IoT", "Custom"]
+    profiles = ["Light", "Standard", "Strict", "Family"]
     current = db.session.get(Setting, "adguard_profile")
     return render_template("pages/dns.html",
                            profiles=profiles,
@@ -78,7 +78,12 @@ def run_diag(tool):
         "dig": ["dig", "+short", target or "cloudflare.com"],
     }
     if tool not in cmd_map: abort(400)
-    p = subprocess.run(cmd_map[tool], capture_output=True, text=True, timeout=15)
+    try:
+        p = subprocess.run(cmd_map[tool], capture_output=True, text=True, timeout=25)
+    except FileNotFoundError:
+        return jsonify({"stdout": "", "stderr": f"{tool} is not installed on this device", "rc": 127})
+    except subprocess.TimeoutExpired:
+        return jsonify({"stdout": "", "stderr": "timed out — no answer", "rc": 124})
     _audit(f"diag.{tool}", target)
     return jsonify({"stdout": p.stdout, "stderr": p.stderr, "rc": p.returncode})
 
@@ -369,7 +374,7 @@ def vpn_upload(provider):
 @bp.post("/api/system/<action>")
 @login_required
 def system_action(action):
-    if action not in ("reboot","restart-flask","factory-reset"):
+    if action not in ("reboot","shutdown","restart-flask","factory-reset"):
         abort(400)
     rc, out, err = run_script("system-action", [action])
     _audit(f"system.{action}")
@@ -384,9 +389,14 @@ def change_password():
     if not bcrypt.checkpw(cur.encode(), current_user.password_hash.encode()):
         return jsonify({"ok": False, "error": "current password wrong"}), 400
     if new != new2 or len(new) < 8:
-        return jsonify({"ok": False, "error": "new passwords mismatch or too short (≥12)"}), 400
-    current_user.password_hash = bcrypt.hashpw(new.encode(), bcrypt.gensalt()).decode()
+        return jsonify({"ok": False, "error": "The new passwords must match and be at least 8 characters."}), 400
+    user = current_user._get_current_object()
+    user.password_hash = bcrypt.hashpw(new.encode(), bcrypt.gensalt()).decode()
     db.session.commit()
+    # The login identity includes a password fingerprint: every other device is
+    # signed out by the change; keep THIS browser signed in.
+    from flask_login import login_user
+    login_user(user)
     _audit("password.change")
     return jsonify({"ok": True})
 
@@ -394,8 +404,13 @@ def change_password():
 @login_required
 def set_dns_profile():
     p = request.form.get("profile","")
-    if p not in ("Light","Standard","Strict","Family","IoT","Custom"):
+    if p not in ("Light","Standard","Strict","Family"):
         return jsonify({"ok": False, "error": "invalid profile"}), 400
+    # Actually apply it to AdGuard Home — storing the name alone changes nothing.
+    rc, out, err = run_script("dns-profile", [p], timeout=60)
+    res = _script_json(out, err)
+    if not res.get("ok"):
+        return jsonify(res), 502
     s = db.session.get(Setting, "adguard_profile")
     if s is None:
         db.session.add(Setting(key="adguard_profile", value=p))
@@ -631,6 +646,13 @@ def wg_start():
     _audit("wg-server.start")
     return jsonify({"ok": rc == 0, "out": out, "err": err})
 
+@bp.post("/api/wg-server/stop")
+@login_required
+def wg_stop():
+    rc, out, err = run_script("wg-server", ["stop"])
+    _audit("wg-server.stop")
+    return jsonify({"ok": rc == 0, "out": out, "err": err})
+
 @bp.post("/api/wg-server/peer")
 @login_required
 def wg_add_peer():
@@ -801,9 +823,12 @@ def alert_internal(trigger):
 @bp.post("/api/backup/restore")
 @login_required
 def backup_restore():
+    # The typed password is the one the BACKUP was made with (it decrypts the
+    # file) — it need not equal today's dashboard password, e.g. after a
+    # factory reset. A wrong password simply fails to decrypt.
     pw = request.form.get("password","")
-    if not bcrypt.checkpw(pw.encode(), current_user.password_hash.encode()):
-        return jsonify({"ok": False, "error": "wrong password"}), 401
+    if not pw:
+        return jsonify({"ok": False, "error": "Enter the password this backup was made with."}), 400
     f = request.files.get("file")
     if not f:
         return jsonify({"ok": False, "error": "no file"}), 400
@@ -1536,20 +1561,20 @@ EXTRAS = {
     "i2p": {
         "name": "I2P",
         "icon": "🕸️",
-        "summary": "Anonymous network for .i2p sites.",
-        "howto": "After installing, set your browser's HTTP proxy to {gw} port 4444 to open .i2p sites.",
+        "summary": "A separate anonymous network with its own websites (addresses ending in .i2p).",
+        "howto": "After installing: in your browser's network settings, set the HTTP proxy to {gw}, port 4444. Then .i2p addresses open.",
     },
     "yggdrasil": {
         "name": "Yggdrasil",
         "icon": "🌳",
-        "summary": "Experimental encrypted mesh network (gives the Pi an address on the mesh).",
-        "howto": "For people who already use Yggdrasil — add peers in /etc/yggdrasil/yggdrasil.conf.",
+        "summary": "An experimental encrypted network between volunteers' computers. Only useful if you already use it.",
+        "howto": "For people who already use Yggdrasil. It needs manual setup on the device afterwards.",
     },
     "lokinet": {
         "name": "Lokinet",
         "icon": "🔗",
-        "summary": "Onion-routed network for .loki sites. Experimental on this OS.",
-        "howto": "Experimental: the package may not be available for every OS release.",
+        "summary": "Another anonymous network with its own websites (addresses ending in .loki). Experimental.",
+        "howto": "Experimental: installation may fail on this system. If it does, nothing else is affected.",
     },
 }
 

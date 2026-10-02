@@ -19,7 +19,7 @@ RestartSec=5
 NoNewPrivileges=false
 ProtectSystem=strict
 # Scripts run through sudo stay inside this sandbox, so every path they write must be listed.
-ReadWritePaths=/var/lib/privacypi /var/log/privacypi /run -/etc/iptables /etc/privacypi -/etc/tor -/etc/wireguard -/etc/wpa_supplicant -/etc/systemd/network -/etc/hostapd -/etc/unbound/unbound.conf.d -/boot/firmware -/etc/chrony/conf.d
+ReadWritePaths=/var/lib/privacypi /var/log/privacypi /run -/etc/iptables /etc/privacypi -/etc/tor -/etc/wireguard -/etc/wpa_supplicant -/etc/systemd/network -/etc/hostapd -/etc/unbound/unbound.conf.d -/boot/firmware -/etc/chrony/conf.d -/var/lib/tor
 ProtectHome=true
 PrivateTmp=true
 

@@ -1,153 +1,311 @@
 {% extends "base.html" %}
 {% block heading %}Alerts{% endblock %}
-{% block subheading %}Send notifications via Telegram, Discord, email, ntfy.sh, etc. when something happens.{% endblock %}
+{% block subheading %}Get a message on your phone or by email when something important happens on PrivacyPi.{% endblock %}
 {% block content %}
+{% set trigger_names = {
+  'mode.killswitch': 'Internet was blocked to protect you (kill switch)',
+  'vpn.drop': 'The VPN connection dropped',
+  'login.fail.repeated': 'Someone typed the wrong dashboard password several times',
+  'system.reboot': 'PrivacyPi was restarted',
+  'system.factory-reset': 'PrivacyPi was factory reset',
+  'wizard.complete': 'First-time setup was finished',
+  'intrusion.detected': 'A possible break-in attempt was detected',
+} %}
+<style>
+  .al-page [hidden] { display: none !important; }
+  .al-page .btn, .al-page .btn-sm { min-height: 44px; padding: 9px 16px; font-size: 13.5px; }
+  .al-page .btn:disabled { opacity: .6; cursor: progress; }
+  .al-page .btn:focus-visible, .al-page summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .al-page input:not([type=checkbox]), .al-page select { min-height: 44px; font-size: 16px; }
+  .al-page .text-muted { color: var(--text-1); }
+  .al-page code { overflow-wrap: anywhere; word-break: break-word; }
+  .al-notice { border: 1px solid rgba(251,191,36,.35); background: rgba(251,191,36,.08); border-radius: var(--radius);
+    padding: 12px 14px; font-size: 13.5px; }
+  .al-check { display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 6px 10px; cursor: pointer;
+    border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg-2); font-size: 13.5px; color: var(--text-0); }
+  .al-check input { width: 20px; height: 20px; flex: none; accent-color: var(--accent); margin: 0; }
+  .al-checks { display: grid; gap: 6px; border: none; padding: 0; margin: 0 0 var(--space-3); }
+  .al-checks legend { font-size: 12px; font-weight: 500; color: var(--text-1); margin-bottom: 6px; padding: 0; }
+  .al-item { border-top: 1px solid var(--border); padding: 14px 0; display: flex; gap: 12px; flex-wrap: wrap; align-items: center; justify-content: space-between; }
+  .al-item:first-child { border-top: none; padding-top: 0; }
+  .al-item > .al-main { flex: 1 1 200px; min-width: 0; overflow-wrap: anywhere; }
+  .al-item strong { font-size: 14px; }
+  .al-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  .al-details > summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; font-size: 12.5px; color: var(--accent); }
+  .al-examples { margin: 0; padding-left: 18px; font-size: 12.5px; color: var(--text-1); line-height: 1.9; }
+  .al-grid { display: grid; gap: 0 var(--space-3); grid-template-columns: repeat(3, 1fr); }
+  @media (max-width: 600px) { .al-grid { grid-template-columns: 1fr; } }
+</style>
+
+<div class="al-page">
+
+<div class="al-notice mb-4" role="note">
+  <strong>This feature is not active in this release yet.</strong>
+  You can look around and save your settings here, but PrivacyPi does not send alerts automatically yet.
+</div>
 
 <div class="card mb-4">
-  <p class="card-title">Add notification channel</p>
+  <p class="card-title">Where to send alerts</p>
+  <p class="text-sm text-muted mb-3">
+    Add a place where PrivacyPi should send messages — for example a Telegram chat, a Discord channel,
+    the ntfy app, or an email address. PrivacyPi needs internet to send them.
+  </p>
   <form id="alert-form">
     <div class="grid grid-2">
-      <div class="field"><label>Label</label><input name="label" placeholder="My Telegram" required></div>
-      <div class="field"><label>Apprise URL</label>
-        <input name="url" placeholder="tgram://botToken/chatId" required>
+      <div class="field">
+        <label for="al-label">Name (so you recognise it)</label>
+        <input id="al-label" name="label" placeholder="My Telegram" maxlength="64" required>
+      </div>
+      <div class="field">
+        <label for="al-url">Service link</label>
+        <input id="al-url" name="url" placeholder="ntfy://my-topic" required autocapitalize="none" autocorrect="off" spellcheck="false" aria-describedby="al-url-help">
       </div>
     </div>
-    <div class="field">
-      <label>Triggers</label>
-      <div class="flex gap-2" style="flex-wrap:wrap">
-        {% for t in valid_triggers %}
-        <label class="badge" style="cursor:pointer;font-weight:400">
-          <input type="checkbox" name="triggers" value="{{ t }}" style="margin-right:6px;width:auto"> {{ t }}
-        </label>
-        {% endfor %}
-      </div>
-    </div>
-    <button class="btn btn-primary">Add channel</button>
+    <details class="al-details" id="al-url-help">
+      <summary>What is a service link? Show examples</summary>
+      <p class="text-sm text-muted" style="margin:0 0 6px">A service link tells PrivacyPi which app to use and where to deliver the message. Replace the CAPITAL parts with your own details:</p>
+      <ul class="al-examples">
+        <li>ntfy app: <code>ntfy://TOPIC</code></li>
+        <li>Telegram: <code>tgram://BOT_TOKEN/CHAT_ID</code></li>
+        <li>Discord: <code>discord://WEBHOOK_ID/WEBHOOK_TOKEN</code></li>
+        <li>Email (Gmail): <code>mailto://USER:PASSWORD@gmail.com?to=YOU@example.com</code></li>
+      </ul>
+      <p class="text-xs text-muted" style="margin:8px 0 12px">
+        More services are listed in the
+        <a href="https://github.com/caronc/apprise/wiki" target="_blank" rel="noopener noreferrer" class="text-accent">Apprise guide</a>
+        (opens an outside website).
+      </p>
+    </details>
+    <fieldset class="al-checks">
+      <legend>Send a message when…</legend>
+      {% for t in valid_triggers %}
+      <label class="al-check">
+        <input type="checkbox" name="triggers" value="{{ t }}">
+        <span>{{ trigger_names.get(t, t) }}</span>
+      </label>
+      {% endfor %}
+    </fieldset>
+    <button class="btn btn-primary" type="submit" id="al-add">Add</button>
   </form>
-  <p class="text-xs text-muted mt-3">
-    URL formats: <code>tgram://TOKEN/CHAT_ID</code> ·
-    <code>discord://WEBHOOK_ID/WEBHOOK_TOKEN</code> ·
-    <code>ntfy://TOPIC</code> ·
-    <code>mailto://user:pw@gmail.com?to=you@x.com</code> ·
-    <a href="https://github.com/caronc/apprise/wiki" target="_blank" class="text-accent">full list</a>
-  </p>
 </div>
 
 <div class="card">
-  <p class="card-title">Configured channels</p>
+  <p class="card-title">Your alert destinations</p>
   {% if configs %}
-  <table>
-    <thead><tr><th>Label</th><th>URL</th><th>Triggers</th><th></th></tr></thead>
-    <tbody>
+  <div>
     {% for c in configs %}
-    <tr>
-      <td>{{ c.label }}</td>
-      <td><code class="text-xs">{{ c.url[:40] }}{% if c.url|length > 40 %}…{% endif %}</code></td>
-      <td><span class="text-xs text-muted">{{ c.triggers }}</span></td>
-      <td>
-        <button class="btn btn-sm test-alert" data-id="{{ c.id }}">Test</button>
-        <button class="btn btn-sm btn-danger del-alert" data-id="{{ c.id }}">Delete</button>
-      </td>
-    </tr>
+    <div class="al-item">
+      <div class="al-main">
+        <strong>{{ c.label }}</strong>
+        <div class="text-xs text-muted">Service: {{ (c.url or '').split('://')[0] or 'unknown' }} (details hidden)</div>
+        <div class="text-xs text-muted">
+          {% set ns = namespace(n=0) %}
+          {% for t in valid_triggers %}{% if ('"' ~ t ~ '"') in (c.triggers or '') %}{% set ns.n = ns.n + 1 %}{% if ns.n > 1 %} · {% endif %}{{ trigger_names.get(t, t) }}{% endif %}{% endfor %}
+          {% if ns.n == 0 %}No events chosen — only test messages are sent.{% endif %}
+        </div>
+      </div>
+      <div class="al-actions">
+        <button class="btn test-alert" type="button" data-id="{{ c.id }}">Send test</button>
+        <button class="btn btn-danger del-alert" type="button" data-id="{{ c.id }}" data-label="{{ c.label }}">Delete</button>
+      </div>
+    </div>
     {% endfor %}
-    </tbody>
-  </table>
+  </div>
   {% else %}
-  <p class="text-muted text-sm">No channels yet. Add one above.</p>
+  <p class="text-muted text-sm" style="margin:0">Nothing added yet. Use the form above to add your first one.</p>
   {% endif %}
 </div>
 
 <div class="card mt-4">
-  <p class="card-title">🔔 Alert rules</p>
+  <p class="card-title">Custom alert rules <span class="badge warn" style="margin-left:6px;text-transform:none;letter-spacing:0">Not active yet</span></p>
   <p class="text-sm text-muted mb-3">
-    Rules evaluated every 60s. When a rule fires, all enabled channels above receive
-    the alert. Cooldown prevents spam.
+    For experienced users: describe your own situations to be warned about. A rule sends a message to all
+    destinations above when it happens often enough within a set time.
   </p>
-  <form id="rule-form" class="flex gap-2 mb-3" style="flex-wrap:wrap">
-    <input id="r-label" placeholder="rule label" maxlength="64" style="flex:1;min-width:140px">
-    <select id="r-kind" style="min-width:140px">
-      <option value="audit.action">audit.action</option>
-      <option value="dns.host">dns.host</option>
-      <option value="dns.client_blocked">dns.client_blocked</option>
-      <option value="threshold.fails">threshold.fails</option>
-    </select>
-    <input id="r-pattern" placeholder="pattern (e.g. mode.killswitch%, *.malware.tld, 10.10.10.42)" style="flex:2;min-width:200px">
-    <input id="r-threshold" placeholder="threshold" type="number" min="1" value="1" style="width:90px">
-    <input id="r-window" placeholder="window min" type="number" min="1" value="60" style="width:90px">
-    <input id="r-cooldown" placeholder="cooldown min" type="number" min="0" value="60" style="width:90px">
-    <button class="btn btn-primary" type="submit">Add rule</button>
+  <form id="rule-form">
+    <div class="grid grid-2">
+      <div class="field">
+        <label for="r-label">Rule name</label>
+        <input id="r-label" placeholder="Kids' tablet blocked a lot" maxlength="64" required>
+      </div>
+      <div class="field">
+        <label for="r-kind">What to watch</label>
+        <select id="r-kind">
+          <option value="audit.action">An action in the activity log</option>
+          <option value="dns.host">A website being looked up</option>
+          <option value="dns.client_blocked">A device with blocked lookups</option>
+          <option value="threshold.fails">Failed sign-in attempts</option>
+        </select>
+      </div>
+    </div>
+    <div class="field">
+      <label for="r-pattern">What to match</label>
+      <input id="r-pattern" placeholder="mode.killswitch%" maxlength="255" required autocapitalize="none" autocorrect="off" spellcheck="false" aria-describedby="r-pattern-help">
+      <p class="text-xs text-muted" id="r-pattern-help" style="margin:6px 0 0">Type the action name, website or device address to watch for.</p>
+    </div>
+    <div class="al-grid">
+      <div class="field"><label for="r-threshold">How many times</label><input id="r-threshold" type="number" inputmode="numeric" min="1" value="1"></div>
+      <div class="field"><label for="r-window">Within how many minutes</label><input id="r-window" type="number" inputmode="numeric" min="1" value="60"></div>
+      <div class="field"><label for="r-cooldown">Minutes to wait before alerting again</label><input id="r-cooldown" type="number" inputmode="numeric" min="0" value="60"></div>
+    </div>
+    <button class="btn" type="submit" id="r-add">Add rule</button>
   </form>
-  <table style="width:100%;font-size:13px"><thead>
-    <tr style="text-align:left;color:#888;font-size:12px">
-      <th>Label</th><th>Kind</th><th>Pattern</th><th>Thr.</th><th>Win.</th><th>CD</th><th>Last fire</th><th></th>
-    </tr></thead><tbody id="rules-body"></tbody></table>
+  <div id="rules-body" class="mt-4" role="status" aria-live="polite"><p class="text-sm text-muted" style="margin:0">Loading rules…</p></div>
+</div>
+
 </div>
 
 <script>
-function elx(t,a,x){const e=document.createElement(t);if(a)for(const k in a)e[k]=a[k];if(x!=null)e.textContent=x;return e;}
-async function loadRules() {
-  const r = await fetch('/api/alert-rules'); const d = await r.json();
-  const tb = document.getElementById('rules-body'); tb.replaceChildren();
-  for (const x of d.rules) {
-    const tr = elx('tr');
-    tr.appendChild(elx('td', null, x.label));
-    tr.appendChild(elx('td', {style:'font-family:\'JetBrains Mono\',monospace;font-size:11px'}, x.kind));
-    tr.appendChild(elx('td', {style:'font-family:\'JetBrains Mono\',monospace;font-size:11px'}, x.pattern));
-    tr.appendChild(elx('td', null, x.threshold));
-    tr.appendChild(elx('td', null, x.window_minutes + 'm'));
-    tr.appendChild(elx('td', null, x.cooldown_minutes + 'm'));
-    tr.appendChild(elx('td', {style:'font-size:11px;color:#888'}, x.last_fired_at ? x.last_fired_at.slice(0,16) : '—'));
-    const td = elx('td', {style:'text-align:right'});
-    const tog = elx('button', {className:'btn btn-sm'}, x.enabled ? 'on' : 'off');
-    tog.addEventListener('click', async () => {
-      await fetch('/api/alert-rules/' + x.id + '/toggle', {method:'POST', headers: csrfHeaders()});
-      loadRules();
-    });
-    const del = elx('button', {className:'btn btn-sm'}, 'del');
-    del.addEventListener('click', async () => {
-      if (!confirm('Delete rule ' + x.label + '?')) return;
-      await fetch('/api/alert-rules/' + x.id, {method:'DELETE', headers: csrfHeaders()});
-      loadRules();
-    });
-    td.appendChild(tog); td.appendChild(document.createTextNode(' ')); td.appendChild(del);
-    tr.appendChild(td);
-    tb.appendChild(tr);
-  }
-}
-document.getElementById('rule-form').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const fd = new FormData();
-  fd.append('label', document.getElementById('r-label').value.trim());
-  fd.append('kind', document.getElementById('r-kind').value);
-  fd.append('pattern', document.getElementById('r-pattern').value.trim());
-  fd.append('threshold', document.getElementById('r-threshold').value);
-  fd.append('window_minutes', document.getElementById('r-window').value);
-  fd.append('cooldown_minutes', document.getElementById('r-cooldown').value);
-  const r = await fetch('/api/alert-rules', {method:'POST', body:fd, headers: csrfHeaders()});
-  const d = await r.json();
-  window.toast(d.ok ? 'rule added' : ('fail: ' + (d.error||'')), d.ok ? 'ok' : 'danger');
-  if (d.ok) { ['r-label','r-pattern'].forEach(i=>document.getElementById(i).value=''); loadRules(); }
-});
-loadRules();
+(function () {
+  const $ = id => document.getElementById(id);
+  const NET_ERR = 'Could not reach PrivacyPi. Make sure you are still connected to its WiFi, then try again.';
+  const KIND = {
+    'audit.action': ['An action in the activity log', 'Action name from the Activity log, for example mode.killswitch% (the % means "anything after").'],
+    'dns.host': ['A website being looked up', 'Website name, for example example.com or *.example.com'],
+    'dns.client_blocked': ['A device with blocked lookups', 'The device\'s address on your network, for example 10.10.10.42'],
+    'threshold.fails': ['Failed sign-in attempts', 'Address of the device trying to sign in, or % for any device.'],
+  };
 
-document.getElementById('alert-form').addEventListener('submit', async e => {
-  e.preventDefault();
-  const fd = new FormData(e.target);
-  const r = await fetch('/api/alerts', {method:'POST', body:fd, headers: csrfHeaders()});
-  const d = await r.json();
-  if (d.ok) { window.toast('Channel added', 'ok'); setTimeout(()=>location.reload(), 600); }
-  else window.toast('Failed: ' + (d.error || 'unknown'), 'danger');
-});
-document.querySelectorAll('.test-alert').forEach(b => b.addEventListener('click', async () => {
-  const r = await fetch(`/api/alerts/${b.dataset.id}/test`, {method:'POST', headers: csrfHeaders()});
-  const d = await r.json();
-  window.toast(d.ok ? 'Test sent' : 'Test failed', d.ok ? 'ok' : 'danger');
-}));
-document.querySelectorAll('.del-alert').forEach(b => b.addEventListener('click', async () => {
-  if (!confirm('Delete this channel?')) return;
-  const r = await fetch(`/api/alerts/${b.dataset.id}/delete`, {method:'POST', headers: csrfHeaders()});
-  const d = await r.json();
-  if (d.ok) location.reload();
-}));
+  function el(tag, props, text) {
+    const e = document.createElement(tag);
+    if (props) for (const k in props) e[k] = props[k];
+    if (text != null) e.textContent = text;
+    return e;
+  }
+  async function api(url, opts) {
+    let r;
+    try { r = await fetch(url, opts); } catch (e) { throw new Error(NET_ERR); }
+    let d = null;
+    try { d = await r.json(); } catch (e) {}
+    if (!d || typeof d !== 'object') throw new Error(r.redirected ? 'You were signed out. Reload the page and sign in again.' : 'PrivacyPi could not complete that. Please try again.');
+    return d;
+  }
+  async function busy(btn, label, fn) {
+    const orig = btn.textContent;
+    btn.disabled = true; btn.textContent = label;
+    try { return await fn(); }
+    catch (e) { window.toast(e.message || 'Something went wrong. Please try again.', 'danger'); }
+    finally { btn.disabled = false; btn.textContent = orig; }
+  }
+
+  // ---- Destinations ----
+  $('alert-form').addEventListener('submit', e => {
+    e.preventDefault();
+    const url = $('al-url').value.trim();
+    if (!/^[a-z][a-z0-9+.\-]*:\/\/.+/i.test(url)) {
+      window.toast('The service link should look like ntfy://my-topic — tap "Show examples" for help.', 'danger');
+      $('al-url').focus(); return;
+    }
+    busy($('al-add'), 'Adding…', async () => {
+      const d = await api('/api/alerts', {method: 'POST', body: new FormData(e.target), headers: csrfHeaders()});
+      if (d.ok) { window.toast('Added', 'ok'); setTimeout(() => location.reload(), 600); }
+      else window.toast('Could not add this. Check the service link and try again.', 'danger');
+    });
+  });
+  document.querySelectorAll('.test-alert').forEach(b => b.addEventListener('click', () => busy(b, 'Sending…', async () => {
+    const d = await api('/api/alerts/' + b.dataset.id + '/test', {method: 'POST', headers: csrfHeaders()});
+    if (d.ok) window.toast('Test message sent — check your phone or inbox.', 'ok');
+    else window.toast('The test message could not be sent. Check the service link and that PrivacyPi has internet. Sending may not be available in this release yet.', 'danger');
+  })));
+  document.querySelectorAll('.del-alert').forEach(b => b.addEventListener('click', () => {
+    if (!confirm('Delete "' + (b.dataset.label || 'this destination') + '"?\n\nPrivacyPi will no longer send messages there.')) return;
+    busy(b, 'Deleting…', async () => {
+      const d = await api('/api/alerts/' + b.dataset.id + '/delete', {method: 'POST', headers: csrfHeaders()});
+      if (d.ok) location.reload();
+      else window.toast('Could not delete it. Reload the page and try again.', 'danger');
+    });
+  }));
+
+  // ---- Rules ----
+  function syncPatternHelp() {
+    const k = KIND[$('r-kind').value];
+    if (k) $('r-pattern-help').textContent = k[1];
+  }
+  $('r-kind').addEventListener('change', syncPatternHelp);
+  syncPatternHelp();
+
+  function rulesMessage(text) {
+    const box = $('rules-body');
+    box.replaceChildren(el('p', {className: 'text-sm text-muted', style: 'margin:0'}, text));
+  }
+
+  async function loadRules() {
+    let d;
+    try { d = await api('/api/alert-rules'); }
+    catch (e) { rulesMessage('Your rules could not be loaded right now. Reload the page to try again.'); return; }
+    const rules = Array.isArray(d.rules) ? d.rules : [];
+    if (!rules.length) { rulesMessage('No rules yet.'); return; }
+    const box = $('rules-body');
+    box.replaceChildren();
+    for (const x of rules) {
+      const item = el('div', {className: 'al-item'});
+      const main = el('div', {className: 'al-main'});
+      const head = el('div');
+      head.appendChild(el('strong', null, x.label || 'Rule'));
+      head.appendChild(document.createTextNode(' '));
+      head.appendChild(el('span', {className: 'badge ' + (x.enabled ? 'ok' : '')}, x.enabled ? 'On' : 'Off'));
+      main.appendChild(head);
+      const kind = (KIND[x.kind] || [x.kind || ''])[0];
+      const line1 = el('div', {className: 'text-xs text-muted'});
+      line1.appendChild(document.createTextNode(kind + ': '));
+      line1.appendChild(el('code', null, x.pattern || ''));
+      main.appendChild(line1);
+      main.appendChild(el('div', {className: 'text-xs text-muted'},
+        (x.threshold || 1) + ' time(s) within ' + (x.window_minutes || 0) + ' min · waits ' + (x.cooldown_minutes || 0) + ' min before alerting again'));
+      let last = 'Never sent an alert';
+      if (x.last_fired_at) {
+        const t = new Date(/Z|[+-]\d\d:?\d\d$/.test(x.last_fired_at) ? x.last_fired_at : x.last_fired_at + 'Z');
+        last = 'Last alert: ' + (isNaN(t) ? String(x.last_fired_at).slice(0, 16).replace('T', ' ') : t.toLocaleString([], {dateStyle: 'medium', timeStyle: 'short'}));
+      }
+      main.appendChild(el('div', {className: 'text-xs text-muted'}, last));
+      item.appendChild(main);
+
+      const actions = el('div', {className: 'al-actions'});
+      const tog = el('button', {className: 'btn', type: 'button'}, x.enabled ? 'Turn off' : 'Turn on');
+      tog.addEventListener('click', () => busy(tog, 'Saving…', async () => {
+        const r = await api('/api/alert-rules/' + x.id + '/toggle', {method: 'POST', headers: csrfHeaders()});
+        if (!r.ok) window.toast('Could not change this rule. Please try again.', 'danger');
+        await loadRules();
+      }));
+      const del = el('button', {className: 'btn btn-danger', type: 'button'}, 'Delete');
+      del.addEventListener('click', () => {
+        if (!confirm('Delete the rule "' + (x.label || '') + '"?\n\nYou will no longer be warned about this.')) return;
+        busy(del, 'Deleting…', async () => {
+          const r = await api('/api/alert-rules/' + x.id, {method: 'DELETE', headers: csrfHeaders()});
+          if (!r.ok) window.toast('Could not delete this rule. Please try again.', 'danger');
+          await loadRules();
+        });
+      });
+      actions.appendChild(tog); actions.appendChild(del);
+      item.appendChild(actions);
+      box.appendChild(item);
+    }
+  }
+
+  $('rule-form').addEventListener('submit', e => {
+    e.preventDefault();
+    const label = $('r-label').value.trim(), pattern = $('r-pattern').value.trim();
+    if (!label || !pattern) { window.toast('Give the rule a name and say what to match.', 'danger'); return; }
+    busy($('r-add'), 'Adding…', async () => {
+      const fd = new FormData();
+      fd.append('label', label);
+      fd.append('kind', $('r-kind').value);
+      fd.append('pattern', pattern);
+      fd.append('threshold', $('r-threshold').value || '1');
+      fd.append('window_minutes', $('r-window').value || '60');
+      fd.append('cooldown_minutes', $('r-cooldown').value || '60');
+      const d = await api('/api/alert-rules', {method: 'POST', body: fd, headers: csrfHeaders()});
+      if (d.ok) {
+        window.toast('Rule added', 'ok');
+        $('r-label').value = ''; $('r-pattern').value = '';
+        await loadRules();
+      } else {
+        window.toast(/number/i.test(d.error || '') ? 'The three number boxes must contain whole numbers.' : 'Could not add the rule. Fill in the name and what to match, then try again.', 'danger');
+      }
+    });
+  });
+
+  loadRules();
+})();
 </script>
 {% endblock %}

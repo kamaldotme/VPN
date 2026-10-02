@@ -1,56 +1,195 @@
 {% extends "base.html" %}
 {% block heading %}Extras{% endblock %}
-{% block subheading %}Optional networks, installed only if you want them. Needs an internet connection.{% endblock %}
+{% block subheading %}Optional add-ons for special privacy networks. Most people do not need any of these.{% endblock %}
 {% block content %}
-<div class="grid-auto">
-  {% for key, x in extras.items() %}
-  <div class="tile" data-extra="{{ key }}">
-    <div class="tile-head">
-      <div class="avatar">{{ x.icon }}</div>
-      <div style="flex:1">
-        <div class="tile-name">{{ x.name }}</div>
-        <div class="tile-meta">{{ x.summary }}</div>
-      </div>
-      <span class="badge x-state">…</span>
-    </div>
-    <p class="text-xs text-muted">{{ x.howto.format(gw=lan_gw) }}</p>
-    <div class="flex gap-2 mt-3">
-      <button class="btn btn-primary btn-sm x-install">Install</button>
-      <button class="btn btn-sm x-remove" style="display:none">Remove</button>
-    </div>
-    <pre class="x-log text-xs mt-3" style="display:none;max-height:140px;overflow:auto;margin:0"></pre>
+<style>
+  .ex-page [hidden] { display: none !important; }
+  .ex-page .btn, .ex-page .btn-sm { min-height: 44px; padding: 9px 16px; font-size: 13.5px; }
+  .ex-page .btn:disabled { opacity: .6; cursor: progress; }
+  .ex-page .btn:focus-visible, .ex-page summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .ex-page .text-muted { color: var(--text-1); }
+  .ex-grid { display: grid; gap: var(--space-4); grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); }
+  .ex-page .tile:hover { transform: none; }
+  .ex-msg { font-size: 12.5px; margin: 12px 0 0; min-height: 1.3em; overflow-wrap: anywhere; }
+  .ex-log { max-height: 160px; overflow: auto; margin: 8px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .ex-details > summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; font-size: 12.5px; color: var(--text-1); }
+  .ex-note { border: 1px solid var(--border-strong); background: var(--bg-2); border-radius: var(--radius);
+    padding: 12px 14px; font-size: 13px; color: var(--text-1); }
+</style>
+
+<div class="ex-page">
+  <div class="ex-note mb-4">
+    <strong style="color:var(--text-0)">Before you install:</strong>
+    add-ons are downloaded from the internet, so PrivacyPi must be online. Installing takes a few minutes —
+    you can leave this page and come back. You can remove an add-on again at any time.
   </div>
-  {% endfor %}
+
+  <p id="x-error" class="ex-note mb-4" role="alert" hidden>
+    Could not check which add-ons are installed. Make sure you are still connected to PrivacyPi's WiFi — this page keeps trying.
+  </p>
+
+  <div class="ex-grid">
+    {% for key, x in extras.items() %}
+    <div class="tile" data-extra="{{ key }}" data-name="{{ x.name }}">
+      <div class="tile-head" style="margin-bottom:10px">
+        <div class="avatar" aria-hidden="true">{{ x.icon }}</div>
+        <div style="flex:1;min-width:0">
+          <div class="tile-name">{{ x.name }}</div>
+          <span class="badge x-state" role="status" aria-live="polite">Checking…</span>
+        </div>
+      </div>
+      <p class="text-sm" style="margin:0 0 6px">{{ x.summary }}</p>
+      <p class="text-xs text-muted" style="margin:0;overflow-wrap:anywhere">{{ x.howto.format(gw=lan_gw) }}</p>
+      <div class="flex gap-2 mt-3" style="flex-wrap:wrap">
+        <button class="btn btn-primary x-install" type="button" hidden>Install</button>
+        <button class="btn btn-danger x-remove" type="button" hidden>Remove</button>
+      </div>
+      <p class="ex-msg x-msg" role="status" aria-live="polite"></p>
+      <details class="ex-details x-details" hidden>
+        <summary>Technical details</summary>
+        <pre class="x-log ex-log text-xs" tabindex="0" aria-label="Installation log for {{ x.name }}"></pre>
+      </details>
+    </div>
+    {% else %}
+    <p class="text-muted text-sm">No add-ons are available in this release.</p>
+    {% endfor %}
+  </div>
 </div>
+
 <script>
-async function xRefresh() {
-  try {
-    const d = await (await fetch('/api/extras')).json();
-    for (const tile of document.querySelectorAll('[data-extra]')) {
-      const s = (d.extras || {})[tile.dataset.extra]; if (!s) continue;
-      const b = tile.querySelector('.x-state'), log = tile.querySelector('.x-log');
-      b.textContent = s.busy ? 'working…' : s.installed ? (s.active === 'active' ? 'running' : 'installed') : 'not installed';
-      b.className = 'badge x-state ' + (s.installed && !s.busy ? 'ok' : '');
-      tile.querySelector('.x-install').style.display = (s.installed || s.busy) ? 'none' : '';
-      tile.querySelector('.x-remove').style.display = (s.installed && !s.busy) ? '' : 'none';
-      if (s.busy || log.dataset.show) {
-        const l = await (await fetch(`/api/extras/${tile.dataset.extra}/log`)).json();
-        log.style.display = ''; log.textContent = l.log || ''; log.scrollTop = log.scrollHeight;
+(function () {
+  const tiles = Array.from(document.querySelectorAll('[data-extra]'));
+  const errBox = document.getElementById('x-error');
+  // Per add-on memory between refreshes: what the user last asked for, and whether a job was running.
+  const mem = {};
+  let fails = 0, refreshing = false;
+
+  async function getJson(url, opts) {
+    const r = await fetch(url, opts);
+    const d = await r.json();
+    if (!d || typeof d !== 'object') throw new Error('bad answer');
+    return d;
+  }
+
+  function setMsg(tile, text, cls) {
+    const m = tile.querySelector('.x-msg');
+    m.textContent = text || '';
+    m.className = 'ex-msg x-msg ' + (cls || 'text-muted');
+  }
+
+  async function loadLog(tile) {
+    try {
+      const l = await getJson('/api/extras/' + tile.dataset.extra + '/log');
+      const log = tile.querySelector('.x-log');
+      if (l.log) {
+        tile.querySelector('.x-details').hidden = false;
+        log.textContent = l.log;
+        log.scrollTop = log.scrollHeight;
+      }
+    } catch (e) { /* the log is optional */ }
+  }
+
+  function paint(tile, s) {
+    const key = tile.dataset.extra, name = tile.dataset.name;
+    const m = mem[key] || (mem[key] = {});
+    const badge = tile.querySelector('.x-state');
+    const inst = tile.querySelector('.x-install'), rem = tile.querySelector('.x-remove');
+
+    if (s.busy) {
+      badge.textContent = 'Working…'; badge.className = 'badge x-state warn';
+      inst.hidden = true; rem.hidden = true;
+      setMsg(tile, m.action === 'remove' ? 'Removing ' + name + '…'
+                                         : 'Working on ' + name + '… this can take a few minutes. You can leave this page.');
+    } else {
+      const running = s.installed && s.active === 'active';
+      badge.textContent = s.installed ? (running ? 'Installed and running' : 'Installed, not running') : 'Not installed';
+      badge.className = 'badge x-state ' + (s.installed ? (running ? 'ok' : 'warn') : '');
+      inst.hidden = !!s.installed; rem.hidden = !s.installed;
+      inst.disabled = false; rem.disabled = false;
+      inst.textContent = 'Install'; rem.textContent = 'Remove';
+
+      if (m.wasBusy) {            // a job just finished — tell the user how it went
+        if (m.action === 'install') {
+          if (s.installed) { setMsg(tile, name + ' is installed.', 'text-ok'); window.toast(name + ' is installed', 'ok'); }
+          else { setMsg(tile, name + ' could not be installed. Check that PrivacyPi has internet, then try again.', 'text-danger');
+                 window.toast(name + ' could not be installed', 'danger'); }
+        } else if (m.action === 'remove') {
+          if (!s.installed) { setMsg(tile, name + ' was removed.', 'text-ok'); window.toast(name + ' was removed', 'ok'); }
+          else { setMsg(tile, name + ' could not be removed. Please try again.', 'text-danger'); }
+        } else {
+          setMsg(tile, '');
+        }
+        m.action = null;
+      } else if (!m.action && tile.querySelector('.x-msg').textContent.indexOf('Working on') === 0) {
+        setMsg(tile, '');
       }
     }
-  } catch (e) {}
-}
-document.querySelectorAll('[data-extra]').forEach(tile => {
-  for (const act of ['install', 'remove']) {
-    tile.querySelector('.x-' + act).addEventListener('click', async () => {
-      if (act === 'remove' && !confirm('Remove ' + tile.dataset.extra + '?')) return;
-      tile.querySelector('.x-log').dataset.show = '1';
-      const d = await (await fetch(`/api/extras/${tile.dataset.extra}/${act}`, {method: 'POST', headers: csrfHeaders()})).json();
-      window.toast(d.ok ? (act === 'install' ? 'Installing — this takes a few minutes' : 'Removing…') : (d.error || 'Failed'), d.ok ? 'ok' : 'danger');
-      xRefresh();
-    });
+    m.wasBusy = !!s.busy;
   }
-});
-xRefresh(); setInterval(xRefresh, 4000);
+
+  async function xRefresh() {
+    if (refreshing) return;
+    refreshing = true;
+    try {
+      const d = await getJson('/api/extras');
+      if (d.ok === false || !d.extras) throw new Error('unavailable');
+      fails = 0; errBox.hidden = true;
+      for (const tile of tiles) {
+        const s = d.extras[tile.dataset.extra];
+        if (!s) continue;
+        paint(tile, s);
+        if (s.busy || (mem[tile.dataset.extra] || {}).showLog) await loadLog(tile);
+      }
+    } catch (e) {
+      fails++;
+      if (fails >= 2) {
+        errBox.hidden = false;
+        for (const tile of tiles) {
+          const badge = tile.querySelector('.x-state');
+          if (badge.textContent === 'Checking…') { badge.textContent = 'Status unknown'; badge.className = 'badge x-state'; }
+        }
+      }
+    } finally {
+      refreshing = false;
+    }
+  }
+
+  tiles.forEach(tile => {
+    const key = tile.dataset.extra, name = tile.dataset.name;
+    for (const act of ['install', 'remove']) {
+      const btn = tile.querySelector('.x-' + act);
+      btn.addEventListener('click', async () => {
+        if (act === 'remove' && !confirm('Remove ' + name + '?\n\nIt stops working right away and anything that relies on it will no longer connect. You can install it again later (needs internet).')) return;
+        if (act === 'install' && !confirm('Install ' + name + '?\n\nThis downloads software from the internet and takes a few minutes.')) return;
+        const m = mem[key] || (mem[key] = {});
+        btn.disabled = true;
+        btn.textContent = act === 'install' ? 'Starting…' : 'Removing…';
+        try {
+          const d = await getJson('/api/extras/' + key + '/' + act, {method: 'POST', headers: csrfHeaders()});
+          if (d.ok) {
+            m.action = act; m.showLog = true; m.wasBusy = true;
+            setMsg(tile, act === 'install' ? 'Installing ' + name + '… this takes a few minutes. You can leave this page.' : 'Removing ' + name + '…');
+            window.toast(act === 'install' ? 'Installing — this takes a few minutes' : 'Removing…', 'ok');
+          } else {
+            const again = /already running/i.test(d.error || '');
+            setMsg(tile, again ? 'PrivacyPi is already working on this. Please wait a few minutes.'
+                               : 'Could not start. Please try again in a minute.', 'text-danger');
+            window.toast(again ? 'Already in progress' : 'Could not start', 'danger');
+          }
+        } catch (e) {
+          setMsg(tile, 'Could not reach PrivacyPi. Make sure you are still connected to its WiFi, then try again.', 'text-danger');
+          window.toast('Could not reach PrivacyPi', 'danger');
+        } finally {
+          btn.disabled = false;
+          btn.textContent = act === 'install' ? 'Install' : 'Remove';
+        }
+        xRefresh();
+      });
+    }
+  });
+
+  xRefresh();
+  setInterval(xRefresh, 4000);
+})();
 </script>
 {% endblock %}

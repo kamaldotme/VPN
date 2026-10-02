@@ -23,8 +23,9 @@ trackers blocked and DNS encrypted — and, if you want, all traffic sent throug
    (the first start takes longer).
 4. On your phone or laptop, join the WiFi **`PrivacyPi-Setup`** — password **`privacypi`**.
 5. The setup page opens by itself. If it doesn't, open **http://10.10.10.1** in a browser.
-6. Follow the four steps: dashboard password → internet → name your WiFi → privacy level.
-7. Join **your new WiFi**. Done — everything on it is protected.
+6. Follow the steps: country → dashboard password → internet → name your WiFi → privacy level.
+   When you press Finish, PrivacyPi restarts.
+7. About a minute later, join **your new WiFi**. Done — everything on it is protected.
 
 The dashboard is at **http://10.10.10.1** (or `http://privacypi.local`) while you are on your PrivacyPi WiFi.
 
@@ -48,17 +49,29 @@ Put the SD card in a computer and open the small `bootfs` drive:
 
 ---
 
+## Documentation
+
+| | |
+|---|---|
+| [User guide](docs/USER-GUIDE.md) | Setup and everyday use, step by step |
+| [Troubleshooting](docs/TROUBLESHOOTING.md) | Symptom → cause → fix |
+| [FAQ](docs/FAQ.md) | What it protects against, speed, hardware, logging |
+| [Developer guide](docs/DEVELOPER.md) | Architecture, building the image, tests, the fast dev loop |
+| [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md) | How to help and how to report a vulnerability |
+
+---
+
 ## What's inside
 
 | Layer | What's running |
 |---|---|
 | 📡 **WiFi** | hostapd. Radio roles are detected at every boot by capability, not adapter model (`net-roles.sh`): built-in radio alone = access point; add a USB adapter and the Pi can also join an upstream WiFi |
-| 🌐 **DNS** | AdGuard Home (blocklists) → Unbound (DNSSEC) → DNS-over-TLS upstream; clients cannot bypass it |
+| 🌐 **DNS** | AdGuard Home (blocklists, four blocking levels) → Unbound (DNSSEC) → DNS-over-TLS upstream. Plain DNS from clients is always redirected to it; an optional "DNS trap" also blocks common DNS-over-HTTPS resolvers. In Tor mode lookups go through Tor instead (no ad blocking) |
 | 🔐 **VPN** | OpenVPN + WireGuard clients (`vpn-connect.sh`), NordVPN server auto-selection, kill-switch by construction |
 | 🧅 **Tor** | Transparent Tor for all clients, bridges/pluggable transports |
 | 🥷 **Proxies** | shadowsocks-rust, xray-core, tun2socks |
-| 🛡️ **Firewall** | Dashboard, DNS and admin ports reachable from the PrivacyPi WiFi only; upstream network sees nothing |
-| 💻 **Dashboard** | Flask behind Caddy — plain HTTP on the PrivacyPi WiFi (no certificate warning) and HTTPS for devices that install the root certificate. Optional two-step login |
+| 🛡️ **Firewall** | Dashboard, DNS and admin ports reachable from the PrivacyPi WiFi only. From the upstream network only ping, the WireGuard travel port and (if enabled for development) SSH are answered |
+| 💻 **Dashboard** | Flask behind Caddy — plain HTTP on the PrivacyPi WiFi (no certificate warning) and HTTPS for devices that install the root certificate. Phone-first UI, "keep me signed in", optional two-step login |
 | 🧩 **Extras** | I2P, Yggdrasil, Lokinet — installed on demand from the dashboard, not in the image |
 
 No secrets are baked into the image: keys and passwords are generated on each device's first boot
@@ -101,7 +114,7 @@ app/                     Flask dashboard + setup wizard
 opt/privacypi/scripts/   privileged helpers (route-mode, vpn-connect, net-roles, ap-config, …)
 system/                  config files and systemd units deployed to the device
 tests/                   hardware-free tests
-docs/                    original spec, plans, May 2026 build history
+docs/                    user guide, troubleshooting, FAQ, developer guide (+ historical plans)
 ```
 
 ## Threat model

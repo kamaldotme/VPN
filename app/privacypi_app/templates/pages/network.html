@@ -1,148 +1,256 @@
 {% extends "base.html" %}
-{% block heading %}Internet connection{% endblock %}
+{% block heading %}Internet &amp; WiFi{% endblock %}
 {% block subheading %}Choose how PrivacyPi reaches the internet — a wired cable or a nearby WiFi network.{% endblock %}
 {% block content %}
+<style>
+.pg-net .btn, .pg-net input { min-height: 44px; }
+.pg-net .btn { justify-content: center; }
+.pg-net .btn:disabled { opacity: .55; cursor: not-allowed; }
+.pg-net :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.pg-net input { font-size: 16px; }
+.pg-net .muted { color: #9aa3b8; }
+.pg-net .brk { overflow-wrap: anywhere; }
+.pg-net .field { max-width: 360px; }
+.pg-net .field label { font-size: 13px; }
+.pg-net .note { font-size: 13px; margin: 10px 0 0; min-height: 1.2em; overflow-wrap: anywhere; }
+.pg-net .scan-list { display: flex; flex-direction: column; gap: 6px; max-width: 360px; margin-bottom: 12px; }
+.pg-net .scan-list .btn { justify-content: space-between; text-align: left; width: 100%; }
+.pg-net .scan-list .btn span:first-child { overflow-wrap: anywhere; min-width: 0; }
+.pg-net .scan-list .sig { color: #9aa3b8; font-size: 12px; white-space: nowrap; }
+.pg-net .kv { flex-wrap: wrap; }
+.pg-net .kv .v { overflow-wrap: anywhere; text-align: right; }
+.pg-net summary { cursor: pointer; min-height: 44px; padding: 12px 0; }
+@media (max-width: 768px) { .pg-net .act { width: 100%; } }
+</style>
+
+<div class="pg-net">
 
 <div class="card mb-4">
-  <p class="card-title">Current connection</p>
-  <div id="wan-status" class="text-sm text-muted mt-2">Loading…</div>
+  <p class="card-title muted">Current connection</p>
+  <div id="wan-status" class="text-sm brk" role="status" aria-live="polite">Loading…</div>
+  <details id="wan-details" style="display:none">
+    <summary class="text-sm muted">Technical details</summary>
+    <div class="kv"><span class="k">PrivacyPi's address on that network</span><span class="v" id="wan-ip">—</span></div>
+    <div class="kv"><span class="k">Router it connects through</span><span class="v" id="wan-gw">—</span></div>
+    <div class="kv"><span class="k">Network port</span><span class="v" id="wan-if">—</span></div>
+  </details>
 </div>
 
 <div class="card mb-4">
-  <p class="card-title">🔌 Wired (Ethernet)</p>
-  <p class="text-sm text-muted">Plug a network cable into the Pi. Most reliable — pick this at home.</p>
-  <button id="btn-eth" class="btn btn-primary mt-3">Use Ethernet</button>
+  <p class="card-title muted">🔌 Cable (Ethernet)</p>
+  <p class="text-sm muted">Plug a network cable from your home router into PrivacyPi. This is the most reliable choice — use it at home.</p>
+  <button type="button" id="btn-eth" class="btn btn-primary mt-3 act">Use the cable</button>
+  <p id="eth-note" class="note muted" role="status" aria-live="polite"></p>
 </div>
 
 <div class="card">
-  <p class="card-title">📶 WiFi network</p>
-  <p class="text-sm text-muted">
-    Connect PrivacyPi to a home router or a phone hotspot over WiFi. Useful when there's no cable.
-    If the password is wrong or it can't connect, PrivacyPi automatically switches back to Ethernet — you won't get locked out of this dashboard.
+  <p class="card-title muted">📶 Another WiFi network</p>
+  <p class="text-sm muted">
+    Connect PrivacyPi to a home router or a phone hotspot over WiFi — handy when there is no cable.
+    If the password is wrong or it cannot connect, PrivacyPi switches back to the cable by itself, so you will not be locked out of this dashboard.
   </p>
   {% if wan and wan.ok and not wan.wifi_wan_available %}
   <p class="text-sm mt-3" id="wifi-unavailable">
-    <strong>Not available with a single WiFi radio.</strong> The Pi's WiFi is busy broadcasting your PrivacyPi network.
-    To get internet over WiFi, plug in a USB WiFi adapter and restart PrivacyPi — it will be detected automatically.
+    <strong>Not available on this PrivacyPi yet.</strong> Its built-in WiFi is busy providing your PrivacyPi network.
+    To get internet over WiFi, plug a USB WiFi adapter into PrivacyPi and restart it — the adapter is detected automatically.
   </p>
   {% else %}
 
-  <div class="flex gap-2 mt-3" style="flex-wrap:wrap; align-items:flex-end">
-    <div style="flex:1; min-width:200px">
-      <label class="text-sm text-muted">Network name (SSID)</label>
-      <input id="ssid" autocomplete="off" placeholder="e.g. MyHomeWiFi" maxlength="32">
-    </div>
-    <button id="btn-scan" class="btn btn-sm">Scan</button>
-  </div>
-  <div id="scan-list" class="flex gap-2 mt-2" style="flex-wrap:wrap"></div>
+  <button type="button" id="btn-scan" class="btn mt-3 act">Find nearby networks</button>
+  <div id="scan-list" class="scan-list mt-3" role="status" aria-live="polite"></div>
 
-  <div class="mt-3" style="max-width:320px">
-    <label class="text-sm text-muted">Password</label>
-    <input id="psk" type="password" autocomplete="off" placeholder="WiFi password" maxlength="63">
+  <div class="field mt-3">
+    <label for="ssid">Network name</label>
+    <input id="ssid" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="e.g. MyHomeWiFi" maxlength="32">
+  </div>
+  <div class="field">
+    <label for="psk">Password for that network</label>
+    <input id="psk" type="password" autocomplete="off" maxlength="63">
   </div>
 
-  <button id="btn-wifi" class="btn btn-primary mt-3">Connect to WiFi</button>
-  <p id="wifi-note" class="text-sm text-muted mt-2"></p>
+  <button type="button" id="btn-wifi" class="btn btn-primary act">Connect to this WiFi</button>
+  <p id="wifi-note" class="note muted" role="status" aria-live="polite"></p>
   {% endif %}
 </div>
 
 <div class="card mt-4">
-  <p class="card-title">📡 Your PrivacyPi WiFi</p>
-  <p class="text-sm text-muted">The network your devices join. Changing the name or password restarts the WiFi — every device (including this one) has to reconnect.</p>
-  <div class="mt-3" style="max-width:320px">
-    <label class="text-sm text-muted">WiFi name</label>
-    <input id="ap-ssid" maxlength="32" autocomplete="off">
+  <p class="card-title muted">📡 Your PrivacyPi WiFi</p>
+  <p class="text-sm muted">This is the network your own devices join. Changing the name or password restarts it — every device, including this one, has to reconnect afterwards.</p>
+  <div class="field mt-3">
+    <label for="ap-ssid">WiFi name</label>
+    <input id="ap-ssid" maxlength="32" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" aria-describedby="ap-ssid-help">
+    <div id="ap-ssid-help" class="text-xs muted" style="margin-top:4px">Letters, numbers, spaces, dots, dashes and underscores.</div>
   </div>
-  <div class="mt-3" style="max-width:320px">
-    <label class="text-sm text-muted">New WiFi password (8+ characters)</label>
-    <input id="ap-psk" type="password" maxlength="63" autocomplete="new-password">
+  <div class="field">
+    <label for="ap-psk">New WiFi password</label>
+    <input id="ap-psk" type="password" maxlength="63" autocomplete="new-password" aria-describedby="ap-psk-help">
+    <div id="ap-psk-help" class="text-xs muted" style="margin-top:4px">At least 8 characters. Write it down — you need it on every device.</div>
   </div>
-  <button id="btn-ap" class="btn btn-primary mt-3">Save and restart WiFi</button>
-  <p id="ap-note" class="text-sm text-muted mt-2"></p>
+  <button type="button" id="btn-ap" class="btn btn-primary act">Save and restart WiFi</button>
+  <p id="ap-note" class="note muted" role="status" aria-live="polite"></p>
+</div>
+
 </div>
 
 <script>
-fetch('/api/ap').then(r => r.json()).then(d => {
-  if (d.ok) { document.getElementById('ap-ssid').value = d.ssid;
-    document.getElementById('ap-note').textContent = 'Radio ' + (d.iface || '?') + ' · channel ' + d.channel + ' · country ' + d.country; }
-}).catch(() => {});
-document.getElementById('btn-ap').addEventListener('click', async () => {
-  const ssid = document.getElementById('ap-ssid').value.trim(), psk = document.getElementById('ap-psk').value;
-  if (psk.length < 8) { window.toast('WiFi password must be at least 8 characters', 'danger'); return; }
-  if (!confirm('Restart the WiFi as "' + ssid + '"? You will need to reconnect with the new password.')) return;
-  const fd = new FormData(); fd.append('ssid', ssid); fd.append('psk', psk);
+async function ppFetch(url, opts) {
   try {
-    const d = await (await fetch('/api/ap', {method: 'POST', body: fd, headers: csrfHeaders()})).json();
-    window.toast(d.ok ? 'Saved — WiFi restarts in a few seconds' : (d.error || 'Failed'), d.ok ? 'ok' : 'danger');
-    if (d.ok) document.getElementById('ap-note').textContent = 'Reconnect to "' + ssid + '" with the new password.';
-  } catch (e) { window.toast('Request failed', 'danger'); }
-});
+    const r = await fetch(url, opts);
+    let d = null;
+    try { d = await r.json(); } catch (_) {}
+    if (!d || typeof d !== 'object') {
+      d = {ok: false, error: r.redirected ? 'You were signed out. Reload this page and sign in again.'
+        : 'PrivacyPi gave an unexpected answer (code ' + r.status + '). Try again in a moment.'};
+    } else if (!r.ok && d.ok === undefined) { d.ok = false; }
+    return d;
+  } catch (e) {
+    return {ok: false, unreachable: true, error: 'Could not reach PrivacyPi. Make sure you are still on its WiFi, then try again.'};
+  }
+}
+function ppErr(d, fallback) {
+  const m = d && [d.error, d.stderr, d.err].find(x => typeof x === 'string' && x.trim());
+  if (!m) return fallback;
+  const lines = m.trim().split('\n').map(s => s.trim()).filter(Boolean);
+  const last = lines[lines.length - 1].slice(0, 300);
+  return last === 'invalid SSID' ? 'That network name contains characters PrivacyPi cannot use.' : last;
+}
+function $(id) { return document.getElementById(id); }
+function note(id, text, kind) {
+  const el = $(id);
+  el.textContent = text;
+  el.className = 'note ' + (kind === 'ok' ? 'text-ok' : kind === 'danger' ? 'text-danger' : 'muted');
+}
+let wanMode = {{ (wan.wan_mode if wan and wan.ok else '')|tojson }};
+let busy = false;
 
+// --- current connection ---------------------------------------------------------
 function renderStatus(d) {
-  const el = document.getElementById('wan-status');
-  if (!d || d.ok === false) { el.textContent = (d && d.error) || 'Unavailable'; return; }
+  const el = $('wan-status');
+  if (!d || d.ok === false) {
+    el.textContent = 'Could not check the connection. ' + ppErr(d, '');
+    $('wan-details').style.display = 'none';
+    return;
+  }
+  wanMode = d.wan_mode;
   const wired = d.wan_mode === 'ethernet';
-  const badge = wired
-    ? '<span class="text-accent">🔌 Ethernet</span>'
-    : '<span class="text-accent">📶 WiFi' + (d.wifi_ssid ? ' — ' + d.wifi_ssid : '') + '</span>';
-  el.innerHTML =
-    'Mode: <strong>' + badge + '</strong><br>' +
-    'Interface: <code>' + (d.wan_iface || '?') + '</code> &nbsp; ' +
-    'IP: <code>' + (d.ip || '—') + '</code> &nbsp; ' +
-    'Gateway: <code>' + (d.gw || '—') + '</code>';
+  const up = !!d.ip;
+  el.replaceChildren();
+  const s = document.createElement('strong');
+  s.className = up ? 'text-ok' : 'text-warn';
+  s.textContent = wired ? '🔌 Cable (Ethernet)' : '📶 WiFi' + (d.wifi_ssid ? ' — ' + d.wifi_ssid : '');
+  el.append(s, up ? ' · connected' : (wired
+    ? ' · no connection yet. Check that the cable is plugged into PrivacyPi and your home router.'
+    : ' · not connected yet. It can take half a minute after switching.'));
+  $('wan-details').style.display = '';
+  $('wan-ip').textContent = d.ip || '—';
+  $('wan-gw').textContent = d.gw || '—';
+  $('wan-if').textContent = d.wan_iface || '—';
 }
-
 async function refresh() {
-  try { const r = await fetch('/api/wan/status'); renderStatus(await r.json()); }
-  catch (e) { /* ignore transient errors during a switch */ }
+  if (busy) return;
+  const d = await ppFetch('/api/wan/status');
+  if (busy) return;
+  // Ignore a single missed check (it happens while the connection is switching).
+  if (d.unreachable && $('wan-status').dataset.loaded) return;
+  $('wan-status').dataset.loaded = '1';
+  renderStatus(d);
 }
 
-document.getElementById('btn-scan')?.addEventListener('click', async () => {
-  const list = document.getElementById('scan-list');
-  list.innerHTML = '<span class="text-sm text-muted">Scanning…</span>';
-  try {
-    const r = await fetch('/api/wan/scan');
-    const d = await r.json();
-    if (!d.ok || !d.networks || !d.networks.length) { list.innerHTML = '<span class="text-sm text-muted">No networks found.</span>'; return; }
-    list.innerHTML = '';
-    d.networks.forEach(n => {
-      const b = document.createElement('button');
-      b.className = 'btn btn-sm';
-      const lock = n.security && n.security !== 'open' ? '🔒 ' : '';
-      b.textContent = lock + n.ssid;
-      b.addEventListener('click', () => { document.getElementById('ssid').value = n.ssid; document.getElementById('psk').focus(); });
-      list.appendChild(b);
-    });
-  } catch (e) { list.innerHTML = '<span class="text-sm text-muted">Scan failed.</span>'; }
+// --- cable --------------------------------------------------------------------
+$('btn-eth').addEventListener('click', async () => {
+  if (busy) return;
+  if (wanMode && wanMode !== 'ethernet' &&
+      !confirm('Switch PrivacyPi to the cable?\n\nIt will leave the WiFi network it uses now. If no cable is plugged in, your devices will have no internet until you reconnect it here.')) return;
+  const btn = $('btn-eth');
+  busy = true; btn.disabled = true; btn.textContent = 'Switching… (up to a minute)';
+  note('eth-note', 'Switching to the cable — your devices may lose internet for a moment.', '');
+  const d = await ppFetch('/api/wan/ethernet', {method: 'POST', headers: csrfHeaders()});
+  busy = false; btn.disabled = false; btn.textContent = 'Use the cable';
+  if (d.ok) { note('eth-note', '✓ PrivacyPi is now using the cable.', 'ok'); window.toast('Now using the cable', 'ok'); }
+  else { const why = ppErr(d, 'Could not switch to the cable.'); note('eth-note', '✗ ' + why, 'danger'); window.toast('Could not switch to the cable', 'danger'); }
+  refresh();
 });
 
-document.getElementById('btn-eth').addEventListener('click', async () => {
-  const btn = document.getElementById('btn-eth'); btn.disabled = true;
-  window.toast('Switching to Ethernet…', 'ok');
-  try {
-    const r = await fetch('/api/wan/ethernet', {method:'POST', headers: csrfHeaders()});
-    const d = await r.json();
-    window.toast(d.ok ? 'Now using Ethernet' : ('Failed: ' + d.error), d.ok ? 'ok' : 'danger');
-  } catch (e) { window.toast('Request failed', 'danger'); }
-  btn.disabled = false; refresh();
+// --- find + join a WiFi network -------------------------------------------------
+function bars(sig) { return sig >= -55 ? 'Strong' : sig >= -70 ? 'Good' : sig >= -80 ? 'Weak' : 'Very weak'; }
+function scanMsg(text) {
+  const s = document.createElement('span'); s.className = 'text-sm muted'; s.textContent = text;
+  $('scan-list').replaceChildren(s);
+}
+$('btn-scan')?.addEventListener('click', async () => {
+  const btn = $('btn-scan');
+  btn.disabled = true; btn.textContent = 'Searching… (about 10 seconds)';
+  scanMsg('Looking for WiFi networks nearby…');
+  const d = await ppFetch('/api/wan/scan');
+  btn.disabled = false; btn.textContent = 'Search again';
+  if (d.ok === false) { scanMsg('The search did not work. ' + ppErr(d, '') + ' You can still type the network name below.'); return; }
+  const nets = d.networks || [];
+  if (!nets.length) { scanMsg('No networks found. Move PrivacyPi closer to the router and search again, or type the name below.'); return; }
+  $('scan-list').replaceChildren(...nets.slice(0, 15).map(n => {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'btn';
+    const name = document.createElement('span');
+    const open = !n.security || n.security === 'open';
+    name.textContent = (open ? '' : '🔒 ') + n.ssid;
+    const sig = document.createElement('span'); sig.className = 'sig';
+    sig.textContent = bars(Number(n.signal)) + (open ? ' · no password' : '');
+    b.append(name, sig);
+    b.addEventListener('click', () => { $('ssid').value = n.ssid; $('psk').focus(); });
+    return b;
+  }));
 });
 
-document.getElementById('btn-wifi')?.addEventListener('click', async () => {
-  const ssid = document.getElementById('ssid').value.trim();
-  const psk = document.getElementById('psk').value;
-  if (!ssid) { window.toast('Enter a network name', 'danger'); return; }
-  if (psk.length < 8 || psk.length > 63) { window.toast('Password must be 8–63 characters', 'danger'); return; }
-  const btn = document.getElementById('btn-wifi'); btn.disabled = true;
-  document.getElementById('wifi-note').textContent = 'Connecting and verifying… this can take ~25 seconds.';
+$('btn-wifi')?.addEventListener('click', async () => {
+  if (busy) return;
+  const ssid = $('ssid').value.trim();
+  const psk = $('psk').value;
+  if (!ssid) { note('wifi-note', 'Enter the network name, or pick one from the list.', 'danger'); $('ssid').focus(); return; }
+  if (psk.length < 8 || psk.length > 63) { note('wifi-note', 'WiFi passwords are 8 to 63 characters long. Check the password and try again.', 'danger'); $('psk').focus(); return; }
+  const btn = $('btn-wifi');
+  busy = true; btn.disabled = true; btn.textContent = 'Connecting… (about 30 seconds)';
+  note('wifi-note', 'Connecting to “' + ssid + '” and checking it works. Your devices may lose internet for a moment.', '');
   const fd = new FormData(); fd.append('ssid', ssid); fd.append('psk', psk);
-  try {
-    const r = await fetch('/api/wan/wifi', {method:'POST', body: fd, headers: csrfHeaders()});
-    const d = await r.json();
-    if (d.ok) { window.toast('Connected to ' + ssid, 'ok'); document.getElementById('wifi-note').textContent = ''; }
-    else { window.toast(d.error || 'Could not connect', 'danger'); document.getElementById('wifi-note').textContent = d.error || ''; }
-  } catch (e) { window.toast('Request failed', 'danger'); }
-  document.getElementById('psk').value = '';
-  btn.disabled = false; refresh();
+  const d = await ppFetch('/api/wan/wifi', {method: 'POST', body: fd, headers: csrfHeaders()});
+  busy = false; btn.disabled = false; btn.textContent = 'Connect to this WiFi';
+  if (d.ok) {
+    note('wifi-note', '✓ Connected to “' + ssid + '”.', 'ok');
+    window.toast('Connected to ' + ssid, 'ok');
+    $('psk').value = '';
+  } else {
+    const why = ppErr(d, 'Could not connect. Check the password and try again.');
+    note('wifi-note', '✗ ' + why, 'danger');
+    window.toast('Could not connect to ' + ssid, 'danger');
+  }
+  refresh();
+});
+
+// --- your PrivacyPi WiFi --------------------------------------------------------
+(async () => {
+  const d = await ppFetch('/api/ap');
+  if (d.ok === false) { note('ap-note', 'Could not load the current WiFi name. ' + ppErr(d, ''), 'danger'); return; }
+  $('ap-ssid').value = d.ssid || '';
+  if (d.setup_default) note('ap-note', 'You are still using the WiFi name or password PrivacyPi came with. Change both to keep strangers out.', 'danger');
+})();
+$('btn-ap').addEventListener('click', async () => {
+  const ssid = $('ap-ssid').value.trim(), psk = $('ap-psk').value;
+  if (!/^[A-Za-z0-9 _.\-]{1,32}$/.test(ssid)) { note('ap-note', 'The WiFi name can use letters, numbers, spaces, dots, dashes and underscores (up to 32).', 'danger'); $('ap-ssid').focus(); return; }
+  if (psk.length < 8) { note('ap-note', 'The WiFi password must be at least 8 characters.', 'danger'); $('ap-psk').focus(); return; }
+  if (!/^[\x20-\x7e]+$/.test(psk)) { note('ap-note', 'The WiFi password can only use plain letters, numbers and symbols (no accents or emoji).', 'danger'); $('ap-psk').focus(); return; }
+  if (!confirm('Restart your WiFi as “' + ssid + '”?\n\nEvery device — including this one — will be disconnected and must join “' + ssid + '” again with the new password.')) return;
+  const btn = $('btn-ap');
+  btn.disabled = true; btn.textContent = 'Saving…';
+  const fd = new FormData(); fd.append('ssid', ssid); fd.append('psk', psk);
+  const d = await ppFetch('/api/ap', {method: 'POST', body: fd, headers: csrfHeaders()});
+  btn.disabled = false; btn.textContent = 'Save and restart WiFi';
+  if (d.ok) {
+    note('ap-note', '✓ Saved. The WiFi restarts in a few seconds — then join “' + ssid + '” with your new password and reopen this page.', 'ok');
+    window.toast('Saved — WiFi restarts in a few seconds', 'ok');
+    $('ap-psk').value = '';
+  } else {
+    const why = ppErr(d, 'The WiFi settings could not be saved.');
+    note('ap-note', '✗ ' + why, 'danger');
+    window.toast('WiFi settings were not saved', 'danger');
+  }
 });
 
 refresh();

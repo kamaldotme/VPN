@@ -1,67 +1,182 @@
 {% extends "base.html" %}
-{% block heading %}Tor Configuration{% endblock %}
-{% block subheading %}Bridge editor and DNS-over-Tor toggle.{% endblock %}
+{% block heading %}Tor{% endblock %}
+{% block subheading %}Extra settings for Tor, the strongest anonymity option. Most people never need to change these.{% endblock %}
 {% block content %}
+<style>
+.pg-tor .btn { min-height: 44px; justify-content: center; }
+.pg-tor .btn:disabled { opacity: .55; cursor: not-allowed; }
+.pg-tor :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.pg-tor textarea { font-size: 16px; }
+.pg-tor .muted { color: #9aa3b8; }
+.pg-tor .brk { overflow-wrap: anywhere; }
+.pg-tor .field label { font-size: 13px; }
+.pg-tor #bridges-text { font-family: 'JetBrains Mono', 'SF Mono', Menlo, monospace; font-size: 13px; min-height: 130px; resize: vertical; }
+.pg-tor .btn-row { display: flex; flex-wrap: wrap; gap: 8px; }
+@media (max-width: 768px) { .pg-tor .btn-row .btn { flex: 1 1 100%; } }
+</style>
+
+<div class="pg-tor">
 
 <div class="card mb-4">
-  <p class="card-title">Service status</p>
-  <div class="flex gap-3 mt-3">
-    <span class="badge ok">tor running</span>
-    <span class="badge">TransPort 9040</span>
-    <span class="badge">DNSPort 5353</span>
-    <span class="badge">ControlPort 9051</span>
-  </div>
+  <p class="card-title muted">Tor status</p>
+  <div id="tor-now" class="text-sm brk" role="status" aria-live="polite">Loading…</div>
+  <a class="btn btn-primary mt-3" href="/modes" id="tor-go" style="display:none">Go to Routing to turn Tor on</a>
 </div>
 
 <div class="card mb-4">
-  <p class="card-title">Bridges</p>
-  <p class="text-sm text-muted mb-3">
-    If your ISP blocks Tor, paste bridge lines from
-    <a href="https://bridges.torproject.org" target="_blank" class="text-accent">bridges.torproject.org</a>.
-    One bridge per line. Empty disables bridges.
+  <p class="card-title muted">Bridges — only if Tor will not connect</p>
+  <p class="text-sm muted mb-3">
+    Some internet providers and countries block Tor. A <strong>bridge</strong> is a private entrance that gets around the block.
+    If Tor works for you, leave this empty.
   </p>
-  <div class="flex gap-2 mb-3">
-    <span class="badge ok">obfs4</span>
-    <span class="badge ok">snowflake</span>
-    <span class="badge ok">webtunnel</span>
-    <span class="text-xs text-muted">all three transports registered &amp; ready</span>
+  <p class="text-sm muted mb-3">
+    To get bridges, visit
+    <a href="https://bridges.torproject.org" target="_blank" rel="noopener noreferrer" class="text-accent">bridges.torproject.org</a>
+    (opens in a new tab), copy the lines it gives you and paste them below — one per line. Supported kinds: obfs4 and snowflake.
+  </p>
+  <div class="field">
+    <label for="bridges-text">Bridge lines</label>
+    <textarea id="bridges-text" rows="6" spellcheck="false" autocapitalize="none" autocorrect="off"
+              aria-describedby="bridges-status" placeholder="obfs4 1.2.3.4:443 ABCD… cert=… iat-mode=0"></textarea>
   </div>
-  <textarea id="bridges-text" rows="6" placeholder="obfs4 1.2.3.4:443 ABCD... cert=... iat-mode=0
-snowflake 192.0.2.3:80 2B280B... fingerprint=... url=https://snowflake-broker.torproject.net.global.prod.fastly.net/ ...
-webtunnel [192.0.2.5]:443 ABCD... url=https://example.com/path ver=0.0.1"
-            style="font-family:'JetBrains Mono',monospace;font-size:12px"></textarea>
-  <button class="btn btn-primary mt-3" id="save-bridges">Save bridges + reload Tor</button>
-  <p id="bridges-status" class="text-xs text-muted mt-2"></p>
+  <p id="bridges-status" class="text-sm muted mb-3" role="status" aria-live="polite">Checking saved bridges…</p>
+  <div class="btn-row">
+    <button type="button" class="btn btn-primary" id="save-bridges">Save bridges</button>
+    <button type="button" class="btn btn-danger" id="clear-bridges" style="display:none">Remove all bridges</button>
+  </div>
+  <p class="text-xs muted mt-3" style="margin-bottom:0">Saved bridges are not shown here again. Saving replaces the whole list and reloads Tor, which can interrupt Tor browsing for a few seconds.</p>
 </div>
 
 <div class="card">
-  <p class="card-title">DNS-over-Tor</p>
-  <p class="text-sm text-muted mb-3">
-    Route AdGuard's upstream DNS through Tor's DNSPort. Adds latency but no DNS provider sees your queries.
+  <p class="card-title muted">Hide website lookups with Tor</p>
+  <p class="text-sm muted mb-3">
+    Every time a device opens a website it first looks up the site's address. Turning this on sends those lookups through Tor,
+    so no lookup service sees them. The trade-off: pages start loading a little more slowly. It works in any mode, not only Tor.
   </p>
-  <button class="btn dot-toggle" data-state="on">Enable DNS-over-Tor</button>
-  <button class="btn dot-toggle" data-state="off">Disable (use Unbound)</button>
-  <p id="dot-status" class="text-xs text-muted mt-2"></p>
+  <div class="btn-row">
+    <button type="button" class="btn dot-toggle" data-state="on">Turn on</button>
+    <button type="button" class="btn dot-toggle" data-state="off">Turn off (normal)</button>
+  </div>
+  <p id="dot-status" class="text-sm muted mt-3" style="margin-bottom:0" role="status" aria-live="polite">
+    Changing this restarts ad blocking, so websites may not load for a few seconds.
+  </p>
+</div>
+
 </div>
 
 <script>
-fetch('/api/tor/bridges').then(r=>r.json()).then(d => {
-  document.getElementById('bridges-status').textContent =
-    d.enabled ? `${d.bridges} bridges active` : 'no bridges (direct Tor)';
+async function ppFetch(url, opts) {
+  try {
+    const r = await fetch(url, opts);
+    let d = null;
+    try { d = await r.json(); } catch (_) {}
+    if (!d || typeof d !== 'object') {
+      d = {ok: false, error: r.redirected ? 'You were signed out. Reload this page and sign in again.'
+        : 'PrivacyPi gave an unexpected answer (code ' + r.status + '). Try again in a moment.'};
+    } else if (!r.ok && d.ok === undefined) { d.ok = false; }
+    return d;
+  } catch (e) {
+    return {ok: false, error: 'Could not reach PrivacyPi. Make sure you are still on its WiFi, then try again.'};
+  }
+}
+function ppErr(d, fallback) {
+  const m = d && [d.error, d.stderr, d.err].find(x => typeof x === 'string' && x.trim());
+  if (!m) return fallback;
+  const lines = m.trim().split('\n').map(s => s.trim()).filter(Boolean);
+  return lines[lines.length - 1].slice(0, 300);
+}
+function setText(id, text, kind) {
+  const el = document.getElementById(id);
+  el.textContent = text;
+  el.classList.remove('muted', 'text-ok', 'text-danger');
+  el.classList.add(kind === 'ok' ? 'text-ok' : kind === 'danger' ? 'text-danger' : 'muted');
+}
+let bridgeCount = 0;
+function showBridges(d) {
+  bridgeCount = d.enabled ? (Number(d.bridges) || 0) : 0;
+  document.getElementById('clear-bridges').style.display = bridgeCount ? '' : 'none';
+  return bridgeCount
+    ? (bridgeCount === 1 ? '1 bridge is saved and in use.' : bridgeCount + ' bridges are saved and in use.')
+    : 'No bridges saved — Tor connects the normal way.';
+}
+
+// --- is Tor in use? -----------------------------------------------------------
+(async () => {
+  const d = await ppFetch('/api/status');
+  const el = document.getElementById('tor-now');
+  if (!d.mode) { el.textContent = 'Could not check whether Tor is in use. ' + ppErr(d, ''); return; }
+  el.replaceChildren();
+  const s = document.createElement('strong');
+  if (d.mode === 'tor') {
+    s.className = 'text-ok'; s.textContent = '🧅 Tor is on.';
+    el.append(s, ' Every device on your WiFi is using it. Expect slower browsing; video and some sites may not work.');
+  } else {
+    s.textContent = 'Tor is off.';
+    el.append(s, ' Your WiFi is using a different mode. You can still prepare the settings below.');
+    document.getElementById('tor-go').style.display = '';
+  }
+})();
+
+// --- bridges ------------------------------------------------------------------
+(async () => {
+  const d = await ppFetch('/api/tor/bridges');
+  if (d.ok === false || d.bridges === undefined) { setText('bridges-status', 'Could not check saved bridges. ' + ppErr(d, ''), 'danger'); return; }
+  setText('bridges-status', showBridges(d));
+})();
+
+async function saveBridges(text, btn, busyLabel) {
+  const idle = btn.textContent;
+  const both = [document.getElementById('save-bridges'), document.getElementById('clear-bridges')];
+  both.forEach(b => { b.disabled = true; });
+  btn.textContent = busyLabel;
+  const fd = new FormData(); fd.append('bridges', text);
+  const d = await ppFetch('/api/tor/bridges', {method: 'POST', body: fd, headers: csrfHeaders()});
+  both.forEach(b => { b.disabled = false; });
+  btn.textContent = idle;
+  if (d.ok) {
+    const msg = showBridges(d);
+    setText('bridges-status', '✓ Saved. ' + msg, 'ok');
+    document.getElementById('bridges-text').value = '';
+    window.toast(bridgeCount ? 'Bridges saved' : 'Bridges removed', 'ok');
+  } else {
+    const why = ppErr(d, 'The bridges could not be saved. Check that each line was copied completely.');
+    setText('bridges-status', '✗ ' + why, 'danger');
+    window.toast('Bridges were not saved', 'danger');
+  }
+}
+document.getElementById('save-bridges').addEventListener('click', e => {
+  const text = document.getElementById('bridges-text').value.trim();
+  if (!text) {
+    setText('bridges-status', 'Paste at least one bridge line first.' + (bridgeCount ? ' To stop using bridges, press “Remove all bridges”.' : ''), 'danger');
+    document.getElementById('bridges-text').focus();
+    return;
+  }
+  if (bridgeCount && !confirm('Replace the ' + bridgeCount + ' saved bridge(s) with the lines you pasted?\n\nTor reloads, so devices using Tor may lose internet for a few seconds.')) return;
+  saveBridges(text, e.currentTarget, 'Saving…');
 });
-document.getElementById('save-bridges').addEventListener('click', async () => {
-  const fd = new FormData(); fd.append('bridges', document.getElementById('bridges-text').value);
-  const r = await fetch('/api/tor/bridges', {method:'POST', body:fd, headers: csrfHeaders()});
-  const d = await r.json();
-  window.toast(d.ok ? `${d.bridges} bridges saved` : 'Failed', d.ok ? 'ok' : 'danger');
-  document.getElementById('bridges-status').textContent = d.enabled ? `${d.bridges} bridges active` : 'no bridges';
+document.getElementById('clear-bridges').addEventListener('click', e => {
+  if (!confirm('Remove all saved bridges?\n\nIf your internet provider blocks Tor, Tor will stop working until you add bridges again.')) return;
+  saveBridges('', e.currentTarget, 'Removing…');
 });
+
+// --- lookups through Tor --------------------------------------------------------
 document.querySelectorAll('.dot-toggle').forEach(b => b.addEventListener('click', async () => {
+  const on = b.dataset.state === 'on';
+  const all = document.querySelectorAll('.dot-toggle'), idle = b.textContent;
+  all.forEach(x => { x.disabled = true; });
+  b.textContent = on ? 'Turning on…' : 'Turning off…';
   const fd = new FormData(); fd.append('state', b.dataset.state);
-  const r = await fetch('/api/dns/tor-mode', {method:'POST', body:fd, headers: csrfHeaders()});
-  const d = await r.json();
-  document.getElementById('dot-status').textContent = d.out || d.err;
-  window.toast(d.ok ? `DNS-over-Tor: ${b.dataset.state}` : 'Failed', d.ok ? 'ok' : 'danger');
+  const d = await ppFetch('/api/dns/tor-mode', {method: 'POST', body: fd, headers: csrfHeaders()});
+  all.forEach(x => { x.disabled = false; });
+  b.textContent = idle;
+  if (d.ok) {
+    setText('dot-status', on ? '✓ On — website lookups now go through Tor.' : '✓ Off — website lookups use the normal private service.', 'ok');
+    window.toast(on ? 'Lookups now go through Tor' : 'Lookups back to normal', 'ok');
+  } else {
+    const why = ppErr(d, 'The setting could not be changed.');
+    setText('dot-status', '✗ ' + why, 'danger');
+    window.toast('The setting could not be changed', 'danger');
+  }
 }));
 </script>
 {% endblock %}

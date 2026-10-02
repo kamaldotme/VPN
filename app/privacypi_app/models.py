@@ -15,6 +15,13 @@ class User(UserMixin, db.Model):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime)
 
+    def get_id(self):
+        """Login identity = user id + a fingerprint of the password hash, so
+        changing the password signs out every remembered device."""
+        import hashlib
+        fp = hashlib.sha256((self.password_hash or "").encode()).hexdigest()[:16]
+        return f"{self.id}.{fp}"
+
 class Setting(db.Model):
     __tablename__ = "settings"
     key: Mapped[str] = mapped_column(String(64), primary_key=True)

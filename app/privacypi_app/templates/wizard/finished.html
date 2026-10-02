@@ -1,17 +1,23 @@
 {% extends "wizard/_base.html" %}
+{% block step_n %}99{% endblock %}
 {% block step %}Setup complete{% endblock %}
 {% block wizard %}
-<h2>🎉 PrivacyPi is ready</h2>
-<p class="sub">PrivacyPi is restarting — give it about a minute.</p>
-<ol class="text-sm" style="line-height:1.9;padding-left:20px;color:var(--text-1)">
-  <li>Open your device's WiFi settings</li>
+<h1><span aria-hidden="true">🎉</span> PrivacyPi is ready</h1>
+<p class="sub">It's restarting now. Give it about a minute, then:</p>
+<ol class="wizard-list">
+  <li>Open the WiFi settings on your phone or computer</li>
   <li>Join <strong>{{ ssid }}</strong> with the WiFi password you chose</li>
-  <li>That's it — everything on that WiFi is now protected</li>
+  <li>That's it. Everything on that WiFi is now protected</li>
 </ol>
-<div class="card mt-4" style="padding:14px">
-  <div class="text-sm text-muted">Dashboard (while on your new WiFi)</div>
-  <div style="font-weight:600">http://{{ lan_gw }}</div>
-  <div class="text-xs text-muted mt-1">or http://{{ host_mdns }} · user <strong>admin</strong> + your dashboard password</div>
+<div class="panel">
+  <dl class="review">
+    <dt>To change settings later, join your new WiFi and open</dt>
+    <dd>http://{{ lan_gw }}</dd>
+    <dt>Or, on most devices</dt>
+    <dd>http://{{ host_mdns }}</dd>
+    <dt>Sign in with</dt>
+    <dd>Username <strong>admin</strong> and your dashboard password</dd>
+  </dl>
 </div>
-<p class="text-xs text-muted mt-3">You can close this page.</p>
+<p class="auth-foot">This page will stop working because the setup network is gone. You can close it.</p>
 {% endblock %}

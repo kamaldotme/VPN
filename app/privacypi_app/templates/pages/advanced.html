@@ -1,251 +1,443 @@
 {% extends "base.html" %}
-{% block heading %}Advanced (Tier B){% endblock %}
-{% block subheading %}Onion-SSH, wstunnel WG-DPI, Tor circuits, per-domain routing, WebAuthn, lockouts.{% endblock %}
+{% block heading %}Advanced{% endblock %}
+{% block subheading %}Tools for experienced users. Most people never need anything on this page.{% endblock %}
 {% block content %}
+<style>
+  .ad-page [hidden] { display: none !important; }
+  .ad-page .btn, .ad-page .btn-sm { min-height: 44px; padding: 9px 16px; font-size: 13.5px; }
+  .ad-page .btn:disabled { opacity: .6; cursor: progress; }
+  .ad-page .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .ad-page input, .ad-page select { min-height: 44px; font-size: 16px; }
+  .ad-page .text-muted { color: var(--text-1); }
+  .ad-page code { overflow-wrap: anywhere; word-break: break-word; }
+  .ad-notice { border: 1px solid rgba(251,191,36,.35); background: rgba(251,191,36,.08); border-radius: var(--radius);
+    padding: 10px 14px; font-size: 13px; margin-bottom: var(--space-3); }
+  .ad-head { display: flex; gap: 8px 12px; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; margin-bottom: var(--space-3); }
+  .ad-head .card-title { margin: 0; flex: 1 1 200px; padding-top: 4px; }
+  .ad-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-end; }
+  .ad-row > .field { flex: 1 1 180px; margin: 0; min-width: 0; }
+  .ad-state { font-size: 13px; margin: 0 0 12px; overflow-wrap: anywhere; min-height: 1.4em; }
+  .ad-item { border-top: 1px solid var(--border); padding: 10px 0; display: flex; gap: 12px; flex-wrap: wrap;
+    align-items: center; justify-content: space-between; font-size: 13px; }
+  .ad-item:first-child { border-top: none; }
+  .ad-item > .ad-main { flex: 1 1 180px; min-width: 0; overflow-wrap: anywhere; }
+  .ad-mono { font-family: 'JetBrains Mono', 'SF Mono', Menlo, monospace; font-size: 12px; }
+  .ad-list { margin-top: var(--space-3); }
+</style>
 
-<!-- Onion SSH -->
+<div class="ad-page">
+
+<!-- Remote command line through Tor -->
 <div class="card mb-4">
-  <p class="card-title">🧅 Onion service for SSH</p>
+  <div class="ad-head">
+    <p class="card-title">Remote command-line access through Tor</p>
+    <span class="badge" id="oss-badge" role="status" aria-live="polite">Checking…</span>
+  </div>
   <p class="text-sm text-muted mb-3">
-    Reach the Pi's shell via <code>.onion</code> — no inbound ports on WAN.
-    Use:&nbsp;<code>torsocks ssh privacypi@&lt;onion&gt;</code>
+    For people who manage PrivacyPi with typed commands (SSH). Gives the device a private <code>.onion</code>
+    address so you can log in from anywhere through Tor, without opening anything to the regular internet.
+    Tor must be running.
   </p>
-  <p class="text-xs" id="oss-state" style="font-family:'JetBrains Mono',monospace">…</p>
-  <div class="flex gap-2 mt-2">
-    <button class="btn btn-primary" data-act="enable" data-grp="oss">Enable</button>
-    <button class="btn" data-act="disable" data-grp="oss">Disable</button>
+  <p class="ad-state" id="oss-state"></p>
+  <div class="ad-row">
+    <button class="btn btn-primary" type="button" data-act="enable" data-grp="oss">Turn on</button>
+    <button class="btn" type="button" data-act="disable" data-grp="oss">Turn off</button>
   </div>
 </div>
 
-<!-- wstunnel -->
+<!-- Disguise travel connections -->
 <div class="card mb-4">
-  <p class="card-title">🛰️ WireGuard DPI obfuscation (wstunnel)</p>
+  <div class="ad-head">
+    <p class="card-title">Disguise Travel (WG) connections as normal web traffic</p>
+    <span class="badge" id="wst-badge" role="status" aria-live="polite">Checking…</span>
+  </div>
   <p class="text-sm text-muted mb-3">
-    Wraps WireGuard inside WebSocket-over-HTTPS. To a censor's DPI it looks
-    like vanilla TLS to port 8444. Useful in restrictive networks.
+    Some networks and countries block VPN connections. This wraps your <a href="/wg-server" class="text-accent">Travel (WG)</a>
+    connection so it looks like an ordinary secure website visit. Install it first (needs internet, takes a minute), then turn it on.
+    Your phone or laptop needs the matching "wstunnel" app.
   </p>
-  <p class="text-xs" id="wst-state" style="font-family:'JetBrains Mono',monospace">…</p>
-  <div class="flex gap-2 mt-2">
-    <button class="btn" data-act="install" data-grp="wst">Install</button>
-    <button class="btn btn-primary" data-act="enable" data-grp="wst">Enable</button>
-    <button class="btn" data-act="disable" data-grp="wst">Disable</button>
+  <p class="ad-state" id="wst-state"></p>
+  <div class="ad-row">
+    <button class="btn btn-primary" type="button" data-act="enable" data-grp="wst">Turn on</button>
+    <button class="btn" type="button" data-act="disable" data-grp="wst">Turn off</button>
+    <button class="btn" type="button" data-act="install" data-grp="wst">Install</button>
   </div>
 </div>
 
-<!-- Tor circuits -->
+<!-- Tor paths -->
 <div class="card mb-4">
-  <p class="card-title">🔄 Tor circuits</p>
-  <p class="text-sm text-muted mb-3">Live view of your active Tor circuits and the path each takes.</p>
-  <div id="circ-list"><span class="text-xs text-muted">loading…</span></div>
-  <button class="btn mt-2" id="circ-refresh">Refresh</button>
-</div>
-
-<!-- Per-domain routing -->
-<div class="card mb-4">
-  <p class="card-title">🗺️ Per-domain split routing</p>
+  <p class="card-title">Tor paths in use</p>
   <p class="text-sm text-muted mb-3">
-    Route specific domains via <code>tor</code> / <code>vpn</code> / <code>proxy</code>
-    regardless of the device's global mode. Resolved IPs are added to ipsets by a
-    daemon that watches AdGuard's query log.
+    When Tor is on, your traffic hops through three volunteer computers so nobody can trace it back to you.
+    This shows the paths Tor is using right now.
   </p>
-  <form id="dr-form" class="flex gap-2 mb-3">
-    <input id="dr-domain" placeholder="example.com (or *.example.com)" style="flex:1">
-    <select id="dr-mode">
-      <option value="tor">tor</option><option value="vpn">vpn</option>
-      <option value="proxy">proxy</option><option value="direct">direct</option>
-      <option value="killswitch">killswitch</option>
-    </select>
-    <button class="btn btn-primary" type="submit">Add</button>
-  </form>
-  <table style="width:100%"><thead>
-    <tr style="text-align:left;color:#888;font-size:12px">
-      <th>Domain</th><th>Mode</th><th></th>
-    </tr></thead><tbody id="dr-tbody"></tbody></table>
+  <div id="circ-list" role="status" aria-live="polite"><p class="text-sm text-muted" style="margin:0">Loading…</p></div>
+  <button class="btn mt-3" id="circ-refresh" type="button">Refresh</button>
 </div>
 
-<!-- WebAuthn -->
+<!-- Per-website routing -->
 <div class="card mb-4">
-  <p class="card-title">🔑 Hardware key (WebAuthn / passkey)</p>
+  <p class="card-title">Different privacy mode for certain websites</p>
+  <div class="ad-notice" role="note">
+    <strong>This feature is not active in this release yet.</strong>
+    You can save rules here, but PrivacyPi does not apply them yet.
+  </div>
   <p class="text-sm text-muted mb-3">
-    Register a YubiKey, Titan key, or platform passkey as an additional 2FA option.
+    Send particular websites through Tor, the VPN or a proxy — or block them — no matter which privacy mode
+    the device normally uses.
   </p>
-  <ul id="wa-list" class="text-sm" style="margin:0 0 12px 0;padding-left:18px"></ul>
-  <form id="wa-form" class="flex gap-2">
-    <input id="wa-label" placeholder="label (e.g. yubikey-blue)" style="flex:1" maxlength="64">
-    <button class="btn btn-primary" type="submit">Register new key</button>
+  <form id="dr-form" class="ad-row">
+    <div class="field">
+      <label for="dr-domain">Website</label>
+      <input id="dr-domain" placeholder="example.com" autocapitalize="none" autocorrect="off" spellcheck="false" inputmode="url" required>
+    </div>
+    <div class="field">
+      <label for="dr-mode">Send it through</label>
+      <select id="dr-mode">
+        <option value="tor">Tor</option>
+        <option value="vpn">VPN</option>
+        <option value="proxy">Proxy</option>
+        <option value="direct">Normal internet (no extra privacy)</option>
+        <option value="killswitch">Block it</option>
+      </select>
+    </div>
+    <button class="btn btn-primary" type="submit" id="dr-add">Add</button>
+  </form>
+  <p class="text-xs text-muted" style="margin:8px 0 0">Tip: type <code>*.example.com</code> to include every part of a website.</p>
+  <div id="dr-list" class="ad-list" role="status" aria-live="polite"><p class="text-sm text-muted" style="margin:0">Loading…</p></div>
+</div>
+
+<!-- Security keys -->
+<div class="card mb-4">
+  <p class="card-title">Security keys and passkeys</p>
+  <div class="ad-notice" role="note">
+    <strong>This feature is not active in this release yet.</strong>
+    You can register a key here, but PrivacyPi does not ask for it when you sign in yet.
+    For extra sign-in protection today, use two-step login on the <a href="/system" class="text-accent">System</a> page.
+  </div>
+  <p class="text-sm text-muted mb-3">
+    Register a physical security key (such as a YubiKey) or a passkey stored on your phone or computer.
+  </p>
+  <p class="ad-notice" id="wa-insecure" hidden>
+    Security keys only work when the dashboard is opened over a secure <code>https://</code> address.
+    You are using the normal <code>http://</code> address, so registering is switched off here.
+    See <a href="/trust" class="text-accent">Trust this device</a>.
+  </p>
+  <div id="wa-list" class="mb-3" role="status" aria-live="polite"><p class="text-sm text-muted" style="margin:0">Loading…</p></div>
+  <form id="wa-form" class="ad-row">
+    <div class="field">
+      <label for="wa-label">Name for this key</label>
+      <input id="wa-label" placeholder="Blue YubiKey" maxlength="64">
+    </div>
+    <button class="btn btn-primary" type="submit" id="wa-add">Register a key</button>
   </form>
 </div>
 
-<!-- Lockouts -->
+<!-- Blocked sign-in attempts -->
 <div class="card">
-  <p class="card-title">🚫 Login lockout (5 fails / 15 min)</p>
-  <table style="width:100%"><thead>
-    <tr style="text-align:left;color:#888;font-size:12px">
-      <th>IP</th><th>Fails</th><th>Last</th><th></th>
-    </tr></thead><tbody id="lo-tbody"></tbody></table>
-  <button class="btn mt-2" id="lo-clear-all">Clear all</button>
+  <p class="card-title">Wrong-password attempts</p>
+  <p class="text-sm text-muted mb-3">
+    After 5 wrong passwords within 15 minutes, a device is blocked from signing in for a while.
+    If you locked yourself out on another device, you can unblock it here.
+  </p>
+  <div id="lo-list" role="status" aria-live="polite"><p class="text-sm text-muted" style="margin:0">Loading…</p></div>
+  <button class="btn mt-3" id="lo-clear-all" type="button" hidden>Unblock all and clear the list</button>
+</div>
+
 </div>
 
 <script>
-function el(t,a,x){const e=document.createElement(t);if(a)for(const k in a)e[k]=a[k];if(x!=null)e.textContent=x;return e;}
+(function () {
+  const $ = id => document.getElementById(id);
+  const NET_ERR = 'Could not reach PrivacyPi. Make sure you are still connected to its WiFi, then try again.';
+  const MODE_NAMES = {tor: 'Tor', vpn: 'VPN', proxy: 'Proxy', direct: 'Normal internet', killswitch: 'Blocked'};
 
-// generic enable/disable groups
-async function refreshState(grp, api) {
-  const r = await fetch('/api/' + api); const d = await r.json();
-  document.getElementById(grp + '-state').textContent = JSON.stringify(d);
-}
-document.querySelectorAll('button[data-grp]').forEach(b => b.addEventListener('click', async () => {
-  const grp = b.getAttribute('data-grp');
-  const act = b.getAttribute('data-act');
-  const apiName = grp === 'oss' ? 'onion-ssh' : grp === 'wst' ? 'wstunnel' : null;
-  if (!apiName) return;
-  b.disabled = true; const orig = b.textContent; b.textContent = '…';
-  const r = await fetch('/api/' + apiName + '/' + act, {method: 'POST', headers: csrfHeaders()});
-  const d = await r.json();
-  window.toast(d.ok !== false ? (apiName + ' ' + act + ' ok') : ('fail: ' + (d.error||'')),
-    d.ok !== false ? 'ok' : 'danger');
-  b.disabled = false; b.textContent = orig;
-  refreshState(grp, apiName);
-}));
-refreshState('oss', 'onion-ssh');
-refreshState('wst', 'wstunnel');
+  function el(t, a, x) {
+    const e = document.createElement(t);
+    if (a) for (const k in a) e[k] = a[k];
+    if (x != null) e.textContent = x;
+    return e;
+  }
+  function message(box, text) { box.replaceChildren(el('p', {className: 'text-sm text-muted', style: 'margin:0'}, text)); }
+  async function api(url, opts) {
+    let r;
+    try { r = await fetch(url, opts); } catch (e) { throw new Error(NET_ERR); }
+    let d = null;
+    try { d = await r.json(); } catch (e) {}
+    if (!d || typeof d !== 'object') throw new Error(r.redirected ? 'You were signed out. Reload the page and sign in again.' : 'PrivacyPi could not complete that. Please try again.');
+    return d;
+  }
+  async function busy(btn, label, fn) {
+    const orig = btn.textContent;
+    btn.disabled = true; btn.textContent = label;
+    try { return await fn(); }
+    catch (e) { window.toast(e.message || 'Something went wrong. Please try again.', 'danger'); }
+    finally { btn.disabled = false; btn.textContent = orig; }
+  }
+  function badge(id, text, kind) { const b = $(id); b.textContent = text; b.className = 'badge ' + (kind || ''); }
+  function localTime(iso, opts) {
+    if (!iso) return '';
+    const t = new Date(/Z|[+-]\d\d:?\d\d$/.test(iso) ? iso : iso + 'Z');
+    return isNaN(t) ? String(iso).slice(0, 16).replace('T', ' ') : t.toLocaleString([], opts);
+  }
 
-// Tor circuits
-async function loadCircuits() {
-  const r = await fetch('/api/tor/circuits'); const d = await r.json();
-  const wrap = document.getElementById('circ-list');
-  wrap.replaceChildren();
-  if (!d.circuits || d.circuits.length === 0) {
-    wrap.appendChild(el('span', {className:'text-xs text-muted'}, 'No active circuits.'));
-    return;
+  // ---- Remote access through Tor / travel disguise ----
+  const GROUPS = {oss: 'onion-ssh', wst: 'wstunnel'};
+  async function refreshState(grp) {
+    const st = $(grp + '-state');
+    try {
+      const d = await api('/api/' + GROUPS[grp]);
+      if (grp === 'oss') {
+        if (d.enabled && d.onion) {
+          badge('oss-badge', 'On', 'ok');
+          st.replaceChildren(document.createTextNode('Connect with: '), el('code', null, 'torsocks ssh privacypi@' + d.onion));
+        } else if ('enabled' in d) {
+          badge('oss-badge', 'Off', ''); st.textContent = '';
+        } else { throw new Error('unknown'); }
+      } else {
+        if (d.active === true) {
+          badge('wst-badge', 'On', 'ok');
+          st.textContent = d.port ? 'Listening on port ' + d.port + '. Your internet router must forward this port to PrivacyPi.' : '';
+        } else if ('active' in d) {
+          badge('wst-badge', 'Off', ''); st.textContent = '';
+        } else { throw new Error('unknown'); }
+      }
+    } catch (e) {
+      badge(grp + '-badge', 'Status unknown', 'warn');
+      st.textContent = '';
+    }
   }
-  for (const c of d.circuits) {
-    const row = el('div', {style: 'padding:6px 0;border-bottom:1px solid #1a1a1a;font-family:\'JetBrains Mono\',monospace;font-size:11px'});
-    row.appendChild(el('span', {style:'color:var(--accent);width:60px;display:inline-block'}, '#'+c.id));
-    row.appendChild(el('span', {style:'color:#999;margin-right:12px'}, c.purpose||'GENERAL'));
-    const path = c.hops.map(h => h.nickname || h.fp.slice(0,8)).join(' → ');
-    row.appendChild(el('span', {style:'color:#fff'}, path));
-    wrap.appendChild(row);
-  }
-}
-document.getElementById('circ-refresh').addEventListener('click', loadCircuits);
-loadCircuits();
-
-// Domain routes
-async function loadRoutes() {
-  const r = await fetch('/api/domain-routes'); const d = await r.json();
-  const tb = document.getElementById('dr-tbody'); tb.replaceChildren();
-  for (const x of d.routes) {
-    const tr = el('tr');
-    tr.appendChild(el('td', {style:'padding:6px 0;font-family:\'JetBrains Mono\',monospace'}, x.domain));
-    tr.appendChild(el('td', null, x.mode));
-    const td = el('td', {style:'text-align:right'});
-    const btn = el('button', {className:'btn btn-sm', 'data-id': x.id}, 'delete');
-    btn.dataset.id = x.id;
-    btn.addEventListener('click', async () => {
-      const r = await fetch('/api/domain-routes/' + x.id, {method:'DELETE', headers: csrfHeaders()});
-      const d = await r.json();
-      window.toast(d.ok ? 'deleted' : 'fail', d.ok ? 'ok' : 'danger');
-      loadRoutes();
-    });
-    td.appendChild(btn); tr.appendChild(td);
-    tb.appendChild(tr);
-  }
-}
-document.getElementById('dr-form').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const fd = new FormData();
-  fd.append('domain', document.getElementById('dr-domain').value.trim());
-  fd.append('mode', document.getElementById('dr-mode').value);
-  const r = await fetch('/api/domain-routes', {method:'POST', body:fd, headers: csrfHeaders()});
-  const d = await r.json();
-  window.toast(d.ok ? 'added' : ('fail: ' + (d.error||'')), d.ok ? 'ok' : 'danger');
-  if (d.ok) { document.getElementById('dr-domain').value = ''; loadRoutes(); }
-});
-loadRoutes();
-
-// WebAuthn
-function b64urlToBuf(s){s=s.replace(/-/g,'+').replace(/_/g,'/');while(s.length%4)s+='=';
-  return Uint8Array.from(atob(s),c=>c.charCodeAt(0)).buffer;}
-function bufToB64url(buf){return btoa(String.fromCharCode(...new Uint8Array(buf)))
-  .replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');}
-async function loadWA() {
-  const r = await fetch('/api/webauthn/credentials'); const d = await r.json();
-  const ul = document.getElementById('wa-list'); ul.replaceChildren();
-  for (const c of d.credentials) {
-    const li = el('li');
-    li.appendChild(el('span', null, (c.label || 'unlabelled') + ' — ' + c.created_at.slice(0,10) + ' '));
-    const del = el('button', {className:'btn btn-sm'}, 'delete');
-    del.addEventListener('click', async () => {
-      const r = await fetch('/api/webauthn/credentials/' + c.id, {method:'DELETE', headers: csrfHeaders()});
-      if ((await r.json()).ok) loadWA();
-    });
-    li.appendChild(del); ul.appendChild(li);
-  }
-  if (d.credentials.length === 0) ul.appendChild(el('li', {className:'text-muted'}, 'No keys registered yet.'));
-}
-document.getElementById('wa-form').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const label = document.getElementById('wa-label').value.trim() || 'hardware key';
-  const r1 = await fetch('/api/webauthn/register/begin', {method:'POST', headers: csrfHeaders()});
-  const opts = (await r1.json()).options;
-  // Convert from JSON to ArrayBuffers
-  opts.challenge = b64urlToBuf(opts.challenge);
-  opts.user.id = b64urlToBuf(opts.user.id);
-  if (opts.excludeCredentials) opts.excludeCredentials.forEach(c => c.id = b64urlToBuf(c.id));
-  let cred;
-  try {
-    cred = await navigator.credentials.create({publicKey: opts});
-  } catch (err) { window.toast('Cancelled / failed: ' + err, 'danger'); return; }
-  const att = cred.response;
-  const payload = {
-    label,
-    response: {
-      id: cred.id, rawId: bufToB64url(cred.rawId), type: cred.type,
-      response: {
-        clientDataJSON: bufToB64url(att.clientDataJSON),
-        attestationObject: bufToB64url(att.attestationObject),
-      },
-    },
+  const GROUP_TEXT = {
+    'oss/enable':  {busy: 'Turning on…',  ok: 'Remote access through Tor is on', fail: 'Could not turn this on. Make sure Tor is running, wait a minute and try again.'},
+    'oss/disable': {busy: 'Turning off…', ok: 'Remote access through Tor is off', fail: 'Could not turn this off. Please try again.',
+      confirm: 'Turn off remote access through Tor?\n\nYou will no longer be able to log in to PrivacyPi\'s command line from outside your home.'},
+    'wst/install': {busy: 'Installing… about a minute', ok: 'Installed. You can turn it on now.', fail: 'Could not install. Check that PrivacyPi has internet, then try again.'},
+    'wst/enable':  {busy: 'Turning on…',  ok: 'Travel disguise is on', fail: 'Could not turn this on. Tap "Install" first, and make sure Travel (WG) is set up.'},
+    'wst/disable': {busy: 'Turning off…', ok: 'Travel disguise is off', fail: 'Could not turn this off. Please try again.'},
   };
-  const r2 = await fetch('/api/webauthn/register/finish', {
-    method:'POST', headers: {...csrfHeaders(), 'Content-Type':'application/json'},
-    body: JSON.stringify(payload),
-  });
-  const d = await r2.json();
-  window.toast(d.ok ? 'Key registered' : ('Fail: ' + (d.error||'')), d.ok ? 'ok' : 'danger');
-  if (d.ok) { document.getElementById('wa-label').value = ''; loadWA(); }
-});
-loadWA();
-
-// Lockouts
-async function loadLockouts() {
-  const r = await fetch('/api/lockout'); const d = await r.json();
-  const tb = document.getElementById('lo-tbody'); tb.replaceChildren();
-  const all = (d.all_recent || []);
-  if (all.length === 0) { tb.appendChild(el('tr')).appendChild(el('td', {colSpan:4, className:'text-xs text-muted'}, 'No recent failures.')); return; }
-  for (const x of all) {
-    const isLocked = x.fails >= 5;
-    const tr = el('tr');
-    tr.appendChild(el('td', {style:'padding:6px 0;font-family:\'JetBrains Mono\',monospace'}, x.ip));
-    tr.appendChild(el('td', {style: isLocked ? 'color:var(--danger,#f87171)' : ''}, x.fails + (isLocked ? ' 🔒' : '')));
-    tr.appendChild(el('td', null, x.last.slice(11,19)));
-    const td = el('td', {style:'text-align:right'});
-    const btn = el('button', {className:'btn btn-sm'}, 'clear');
-    btn.addEventListener('click', async () => {
-      const fd = new FormData(); fd.append('ip', x.ip);
-      const r = await fetch('/api/lockout/clear', {method:'POST', body:fd, headers: csrfHeaders()});
-      if ((await r.json()).ok) loadLockouts();
+  document.querySelectorAll('button[data-grp]').forEach(b => b.addEventListener('click', () => {
+    const grp = b.dataset.grp, act = b.dataset.act;
+    const apiName = GROUPS[grp], txt = GROUP_TEXT[grp + '/' + act];
+    if (!apiName || !txt) return;
+    if (txt.confirm && !confirm(txt.confirm)) return;
+    busy(b, txt.busy, async () => {
+      const d = await api('/api/' + apiName + '/' + act, {method: 'POST', headers: csrfHeaders()});
+      const ok = d.ok !== false && !d.error;
+      window.toast(ok ? txt.ok : txt.fail, ok ? 'ok' : 'danger');
+      await refreshState(grp);
     });
-    td.appendChild(btn); tr.appendChild(td);
-    tb.appendChild(tr);
+  }));
+  refreshState('oss');
+  refreshState('wst');
+
+  // ---- Tor paths ----
+  async function loadCircuits() {
+    const wrap = $('circ-list');
+    let d;
+    try { d = await api('/api/tor/circuits'); }
+    catch (e) { message(wrap, 'The Tor paths could not be loaded right now.'); return; }
+    const list = Array.isArray(d.circuits) ? d.circuits : [];
+    if (!list.length) {
+      message(wrap, 'No Tor paths right now. That is normal when Tor is switched off or has just started.');
+      return;
+    }
+    wrap.replaceChildren();
+    list.forEach((c, i) => {
+      const hops = Array.isArray(c.hops) ? c.hops : [];
+      const path = hops.map(h => (h && (h.nickname || (h.fp || '').slice(0, 8))) || '?').join(' → ');
+      const row = el('div', {className: 'ad-item'});
+      const main = el('div', {className: 'ad-main'});
+      main.appendChild(el('div', {className: 'text-xs text-muted'}, 'Path ' + (i + 1) + ' · ' + hops.length + ' hop' + (hops.length === 1 ? '' : 's')));
+      main.appendChild(el('div', {className: 'ad-mono'}, 'You → ' + (path || '…') + ' → website'));
+      row.appendChild(main);
+      wrap.appendChild(row);
+    });
   }
-}
-document.getElementById('lo-clear-all').addEventListener('click', async () => {
-  if (!confirm('Clear all login-attempt history?')) return;
-  await fetch('/api/lockout/clear', {method:'POST', body:new FormData(), headers: csrfHeaders()});
+  $('circ-refresh').addEventListener('click', e => busy(e.currentTarget, 'Refreshing…', loadCircuits));
+  loadCircuits();
+
+  // ---- Per-website routing ----
+  async function loadRoutes() {
+    const box = $('dr-list');
+    let d;
+    try { d = await api('/api/domain-routes'); }
+    catch (e) { message(box, 'Your website rules could not be loaded right now.'); return; }
+    const list = Array.isArray(d.routes) ? d.routes : [];
+    if (!list.length) { message(box, 'No website rules yet.'); return; }
+    box.replaceChildren();
+    for (const x of list) {
+      const row = el('div', {className: 'ad-item'});
+      const main = el('div', {className: 'ad-main'});
+      main.appendChild(el('div', {className: 'ad-mono'}, x.domain || ''));
+      main.appendChild(el('div', {className: 'text-xs text-muted'}, 'Goes through: ' + (MODE_NAMES[x.mode] || x.mode || 'unknown')));
+      row.appendChild(main);
+      const btn = el('button', {className: 'btn btn-danger', type: 'button'}, 'Delete');
+      btn.setAttribute('aria-label', 'Delete rule for ' + (x.domain || 'this website'));
+      btn.addEventListener('click', () => {
+        if (!confirm('Delete the rule for ' + (x.domain || 'this website') + '?\n\nThat website will use the normal privacy mode again.')) return;
+        busy(btn, 'Deleting…', async () => {
+          const r = await api('/api/domain-routes/' + x.id, {method: 'DELETE', headers: csrfHeaders()});
+          window.toast(r.ok ? 'Rule deleted' : 'Could not delete the rule. Please try again.', r.ok ? 'ok' : 'danger');
+          await loadRoutes();
+        });
+      });
+      row.appendChild(btn);
+      box.appendChild(row);
+    }
+  }
+  $('dr-form').addEventListener('submit', e => {
+    e.preventDefault();
+    const domain = $('dr-domain').value.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+    if (!domain || !/^[a-z0-9*._\-]+\.[a-z0-9\-]+$/.test(domain)) {
+      window.toast('Type a website name such as example.com (without https://).', 'danger');
+      $('dr-domain').focus(); return;
+    }
+    busy($('dr-add'), 'Adding…', async () => {
+      const fd = new FormData();
+      fd.append('domain', domain);
+      fd.append('mode', $('dr-mode').value);
+      const d = await api('/api/domain-routes', {method: 'POST', body: fd, headers: csrfHeaders()});
+      if (d.ok) {
+        window.toast('Rule added', 'ok');
+        $('dr-domain').value = '';
+        await loadRoutes();
+      } else {
+        window.toast(/already/i.test(d.error || '') ? 'There is already a rule for that website. Delete it first to change it.'
+                                                    : 'Could not add the rule. Check the website name and try again.', 'danger');
+      }
+    });
+  });
+  loadRoutes();
+
+  // ---- Security keys ----
+  const waSupported = !!(window.isSecureContext && window.PublicKeyCredential && navigator.credentials);
+  if (!waSupported) {
+    $('wa-insecure').hidden = false;
+    $('wa-add').disabled = true;
+    $('wa-add').style.cursor = 'not-allowed';
+    $('wa-label').disabled = true;
+  }
+  function b64urlToBuf(s) {
+    s = s.replace(/-/g, '+').replace(/_/g, '/');
+    while (s.length % 4) s += '=';
+    return Uint8Array.from(atob(s), c => c.charCodeAt(0)).buffer;
+  }
+  function bufToB64url(buf) {
+    return btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  }
+  async function loadWA() {
+    const box = $('wa-list');
+    let d;
+    try { d = await api('/api/webauthn/credentials'); }
+    catch (e) { message(box, 'Your registered keys could not be loaded right now.'); return; }
+    const list = Array.isArray(d.credentials) ? d.credentials : [];
+    if (!list.length) { message(box, 'No keys registered yet.'); return; }
+    box.replaceChildren();
+    for (const c of list) {
+      const row = el('div', {className: 'ad-item'});
+      const main = el('div', {className: 'ad-main'});
+      main.appendChild(el('div', null, c.label || 'Unnamed key'));
+      main.appendChild(el('div', {className: 'text-xs text-muted'}, 'Added ' + localTime(c.created_at, {dateStyle: 'medium'})));
+      row.appendChild(main);
+      const del = el('button', {className: 'btn btn-danger', type: 'button'}, 'Remove');
+      del.addEventListener('click', () => {
+        if (!confirm('Remove the key "' + (c.label || 'Unnamed key') + '"?\n\nIt will no longer be linked to your dashboard login.')) return;
+        busy(del, 'Removing…', async () => {
+          const r = await api('/api/webauthn/credentials/' + c.id, {method: 'DELETE', headers: csrfHeaders()});
+          if (!r.ok) window.toast('Could not remove the key. Please try again.', 'danger');
+          await loadWA();
+        });
+      });
+      row.appendChild(del);
+      box.appendChild(row);
+    }
+  }
+  $('wa-form').addEventListener('submit', e => {
+    e.preventDefault();
+    if (!waSupported) { window.toast('Security keys need the secure https:// address. See "Trust this device".', 'danger'); return; }
+    busy($('wa-add'), 'Waiting for your key…', async () => {
+      const label = $('wa-label').value.trim() || 'Security key';
+      const begin = await api('/api/webauthn/register/begin', {method: 'POST', headers: csrfHeaders()});
+      const opts = begin.options;
+      if (!opts || !opts.challenge || !opts.user) throw new Error('Could not start registering a key. Please try again.');
+      opts.challenge = b64urlToBuf(opts.challenge);
+      opts.user.id = b64urlToBuf(opts.user.id);
+      if (opts.excludeCredentials) opts.excludeCredentials.forEach(c => { c.id = b64urlToBuf(c.id); });
+      let cred;
+      try { cred = await navigator.credentials.create({publicKey: opts}); }
+      catch (err) {
+        throw new Error(err && err.name === 'InvalidStateError' ? 'This key is already registered.'
+                                                                 : 'No key was registered — it was cancelled or took too long. Try again.');
+      }
+      if (!cred) throw new Error('No key was registered. Try again.');
+      const att = cred.response;
+      const payload = {
+        label,
+        response: {
+          id: cred.id, rawId: bufToB64url(cred.rawId), type: cred.type,
+          response: {
+            clientDataJSON: bufToB64url(att.clientDataJSON),
+            attestationObject: bufToB64url(att.attestationObject),
+          },
+        },
+      };
+      const d = await api('/api/webauthn/register/finish', {
+        method: 'POST', headers: {...csrfHeaders(), 'Content-Type': 'application/json'},
+        body: JSON.stringify(payload),
+      });
+      if (d.ok) {
+        window.toast('Key registered', 'ok');
+        $('wa-label').value = '';
+        await loadWA();
+      } else {
+        window.toast('The key could not be registered. Please try again.', 'danger');
+      }
+    });
+  });
+  loadWA();
+
+  // ---- Wrong-password attempts ----
+  async function loadLockouts() {
+    const box = $('lo-list'), clearAll = $('lo-clear-all');
+    let d;
+    try { d = await api('/api/lockout'); }
+    catch (e) { message(box, 'The list could not be loaded right now.'); clearAll.hidden = true; return; }
+    const all = Array.isArray(d.all_recent) ? d.all_recent : [];
+    clearAll.hidden = !all.length;
+    if (!all.length) { message(box, '✓ No wrong-password attempts in the last 15 minutes.'); return; }
+    box.replaceChildren();
+    for (const x of all) {
+      const locked = x.fails >= 5;
+      const row = el('div', {className: 'ad-item'});
+      const main = el('div', {className: 'ad-main'});
+      const top = el('div');
+      top.appendChild(el('span', {className: 'ad-mono'}, 'Device ' + (x.ip || 'unknown')));
+      top.appendChild(document.createTextNode(' '));
+      top.appendChild(el('span', {className: 'badge ' + (locked ? 'danger' : '')}, locked ? 'Blocked' : 'Not blocked'));
+      main.appendChild(top);
+      main.appendChild(el('div', {className: 'text-xs text-muted'},
+        x.fails + ' wrong attempt' + (x.fails === 1 ? '' : 's') + ' · last at ' + localTime(x.last, {timeStyle: 'short'})));
+      row.appendChild(main);
+      const btn = el('button', {className: 'btn', type: 'button'}, locked ? 'Unblock' : 'Clear');
+      btn.addEventListener('click', () => busy(btn, 'Clearing…', async () => {
+        const fd = new FormData(); fd.append('ip', x.ip);
+        const r = await api('/api/lockout/clear', {method: 'POST', body: fd, headers: csrfHeaders()});
+        if (!r.ok) window.toast('Could not clear this. Please try again.', 'danger');
+        await loadLockouts();
+      }));
+      row.appendChild(btn);
+      box.appendChild(row);
+    }
+  }
+  $('lo-clear-all').addEventListener('click', e => {
+    if (!confirm('Unblock every device and clear this list?\n\nAnyone who was blocked for typing wrong passwords can try to sign in again.')) return;
+    busy(e.currentTarget, 'Clearing…', async () => {
+      const r = await api('/api/lockout/clear', {method: 'POST', body: new FormData(), headers: csrfHeaders()});
+      if (!r.ok) window.toast('Could not clear the list. Please try again.', 'danger');
+      await loadLockouts();
+    });
+  });
   loadLockouts();
-});
-loadLockouts();
+})();
 </script>
 {% endblock %}

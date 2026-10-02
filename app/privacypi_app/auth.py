@@ -33,7 +33,15 @@ bp = Blueprint("auth", __name__)
 
 @login_manager.user_loader
 def load_user(uid):
-    return db.session.get(User, int(uid))
+    try:
+        raw_id, _, fp = str(uid).partition(".")
+        u = db.session.get(User, int(raw_id))
+    except (ValueError, TypeError):
+        return None
+    # The fingerprint must match the current password (see User.get_id).
+    if u is None or u.get_id() != str(uid):
+        return None
+    return u
 
 def _audit(user: str, action: str, detail: str = None):
     from .services.audit_chain import compute_hash
@@ -64,16 +72,20 @@ def login():
         if u and bcrypt.checkpw(password.encode(), u.password_hash.encode()):
             _clear_fails(src_ip)
             session["pre_2fa_uid"] = u.id
+            # "Keep me signed in on this device": a long-lived cookie, so the
+            # user is not asked again after closing the browser or a Pi restart.
+            remember = request.form.get("remember") == "1"
+            session["pre_2fa_remember"] = remember
             _audit(username, "login.password.ok")
             if u.totp_enabled:
                 return redirect(url_for("auth.totp"))
-            login_user(u)
+            login_user(u, remember=remember)
             u.last_login_at = datetime.utcnow()
             db.session.commit()
             return redirect(url_for("pages.dashboard"))
         _record_fail(src_ip, username or "", request.headers.get("User-Agent", ""))
         _audit(username or "(blank)", "login.password.fail", detail=f"ip={src_ip}")
-        flash("invalid credentials", "error")
+        flash("Wrong username or password.", "error")
     return render_template("login.html")
 
 @bp.route("/2fa", methods=["GET", "POST"])
@@ -86,13 +98,13 @@ def totp():
         code = request.form.get("code", "").strip()
         if u and u.totp_secret and pyotp.TOTP(u.totp_secret).verify(code, valid_window=1):
             session.pop("pre_2fa_uid", None)
-            login_user(u)
+            login_user(u, remember=bool(session.pop("pre_2fa_remember", False)))
             u.last_login_at = datetime.utcnow()
             db.session.commit()
             _audit(u.username, "login.totp.ok")
             return redirect(url_for("pages.dashboard"))
         _audit(u.username if u else "(none)", "login.totp.fail")
-        flash("invalid TOTP code", "error")
+        flash("That code didn't work. Try the newest one from your app.", "error")
     return render_template("totp.html")
 
 @bp.route("/logout")

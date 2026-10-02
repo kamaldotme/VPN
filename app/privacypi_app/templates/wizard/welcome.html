@@ -1,9 +1,10 @@
 {% extends "wizard/_base.html" %}
-{% block step %}Setup · about 2 minutes{% endblock %}
+{% block step %}Setup · takes about 2 minutes{% endblock %}
 {% block wizard %}
-<h2>Welcome to PrivacyPi</h2>
-<p class="sub">Your own private WiFi: ads and trackers blocked, DNS encrypted, and VPN or Tor for every device that joins.</p>
-<ol class="text-sm" style="line-height:1.9;padding-left:20px;color:var(--text-1);margin:0 0 20px">
+<h1>Welcome to PrivacyPi</h1>
+<p class="sub">Your own private WiFi. It blocks ads and trackers and keeps your browsing private for every phone, laptop and TV that joins.</p>
+<p class="text-sm" style="color:var(--text-1);margin:0 0 6px">Here's what we'll do:</p>
+<ol class="wizard-list">
   <li>Choose a password for this dashboard</li>
   <li>Connect PrivacyPi to the internet</li>
   <li>Name your private WiFi</li>
@@ -12,12 +13,13 @@
 <form method="post">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
   <div class="field">
-    <label>Your country (sets the legal WiFi channels)</label>
-    <select name="country" id="country" required>
+    <label for="country">Your country</label>
+    <select name="country" id="country" required autocomplete="country" aria-describedby="country-hint">
       {% for code, name in countries %}<option value="{{ code }}" {% if code == country %}selected{% endif %}>{{ name }}</option>{% endfor %}
     </select>
+    <p class="field-hint" id="country-hint">WiFi rules differ by country. This makes sure PrivacyPi follows the rules where you live.</p>
   </div>
-  <button class="btn btn-primary" style="width:100%">Get started →</button>
+  <button class="btn btn-primary btn-block btn-lg" type="submit">Get started</button>
 </form>
 <script>
 // The Pi has no battery clock — give it the time from this device.

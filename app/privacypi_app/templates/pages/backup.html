@@ -1,69 +1,170 @@
 {% extends "base.html" %}
-{% block heading %}Backup & Restore{% endblock %}
-{% block subheading %}Encrypted snapshots of your config and database.{% endblock %}
+{% block heading %}Backup &amp; restore{% endblock %}
+{% block subheading %}Save a copy of your PrivacyPi settings, or bring them back later.{% endblock %}
 {% block content %}
+<style>
+  .bk-page [hidden] { display: none !important; }
+  .bk-page .btn { min-height: 44px; }
+  .bk-page .btn:disabled { opacity: .6; cursor: progress; }
+  .bk-page .btn:focus-visible, .bk-page summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .bk-page input { min-height: 44px; font-size: 16px; }
+  .bk-page input[type=file] { padding: 9px 12px; }
+  .bk-page .text-muted { color: var(--text-1); }
+  .bk-list { margin: 0 0 var(--space-4); padding-left: 20px; font-size: 13px; color: var(--text-1); line-height: 1.7; }
+  .bk-warn { border: 1px solid rgba(251,191,36,.35); background: rgba(251,191,36,.08); border-radius: var(--radius);
+    padding: 12px 14px; font-size: 13px; margin-bottom: var(--space-4); }
+  .bk-status { font-size: 13px; margin: 12px 0 0; min-height: 1.4em; overflow-wrap: anywhere; }
+  .bk-details > summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; font-size: 12.5px; color: var(--text-1); }
+  .bk-details pre { max-height: 220px; overflow: auto; margin: 0; }
+</style>
+
+<div class="bk-page">
 
 <div class="card mb-4">
-  <p class="card-title">Download encrypted backup</p>
-  <p class="text-sm text-muted mb-4">
-    AES-256-CBC + PBKDF2 (100k iter), encrypted with your admin password.
-    Includes /etc/privacypi/, SQLite DB, torrc, AdGuard config.
+  <p class="card-title">Make a backup</p>
+  <p class="text-sm text-muted mb-3">
+    A backup is one file that you download and keep somewhere safe (your computer, a USB stick).
+    If your PrivacyPi breaks or you reset it, you can use the file to get everything back.
   </p>
+  <p class="text-sm" style="margin:0 0 6px"><strong>What is inside the file:</strong></p>
+  <ul class="bk-list">
+    <li>All PrivacyPi settings, including your VPN and proxy details</li>
+    <li>The dashboard's data: your devices, history and your dashboard login</li>
+    <li>Your Tor settings</li>
+    <li>Your ad-blocking (DNS) settings</li>
+  </ul>
+  <div class="bk-warn">
+    <strong>The file is locked with your dashboard password.</strong>
+    It is encrypted, so nobody can read it without the password you type below.
+    The password is not stored in the file and <strong>cannot be recovered</strong> —
+    if you forget it, the backup is useless. Write it down somewhere safe.
+  </div>
   <form id="bf">
-    <div class="flex gap-2">
-      <input type="password" name="password" placeholder="admin password" style="flex:1">
-      <button class="btn btn-primary">Download backup</button>
+    <div class="field">
+      <label for="bk-pw">Your dashboard password</label>
+      <input id="bk-pw" type="password" name="password" autocomplete="current-password" required>
     </div>
+    <button class="btn btn-primary" type="submit" id="bk-btn">Download backup</button>
+    <p class="bk-status" id="bk-status" role="status" aria-live="polite"></p>
   </form>
 </div>
 
-<div class="card">
-  <p class="card-title text-warn">Restore from backup</p>
-  <p class="text-sm text-muted mb-4">
-    ⚠ Overwrites current config. Flask will restart. Same password used to encrypt.
+<div class="card" style="border-color:rgba(251,191,36,0.3)">
+  <p class="card-title text-warn">Restore from a backup</p>
+  <p class="text-sm text-muted mb-3">
+    Puts the settings from a backup file back onto this PrivacyPi.
   </p>
+  <div class="bk-warn">
+    <strong>This replaces all current settings</strong> with the ones in the backup file, and cannot be undone.
+    The dashboard, Tor and ad-blocking restart, so the internet may pause for up to a minute.
+  </div>
   <form id="rf" enctype="multipart/form-data">
-    <div class="field"><label>Backup file</label><input type="file" name="file" accept=".bin" required></div>
-    <div class="flex gap-2">
-      <input type="password" name="password" placeholder="admin password" style="flex:1" required>
-      <button class="btn btn-danger">Restore</button>
+    <div class="field">
+      <label for="rf-file">Backup file (ends in .bin)</label>
+      <input id="rf-file" type="file" name="file" accept=".bin,application/octet-stream" required>
     </div>
+    <div class="field">
+      <label for="rf-pw">Dashboard password</label>
+      <input id="rf-pw" type="password" name="password" autocomplete="current-password" required aria-describedby="rf-pw-help">
+      <p class="text-xs text-muted" id="rf-pw-help" style="margin:6px 0 0">
+        It must be the same password the dashboard had when the backup was made. If you have changed your
+        password since then, first change it back on the <a href="/system" class="text-accent">System</a> page, then restore.
+      </p>
+    </div>
+    <button class="btn btn-danger" type="submit" id="rf-btn">Restore this backup</button>
   </form>
-  <pre id="rf-result" class="text-xs mt-3" style="display:none"></pre>
+  <p class="bk-status" id="rf-status" role="status" aria-live="polite"></p>
+  <details class="bk-details" id="rf-details" hidden>
+    <summary>Technical details</summary>
+    <pre id="rf-result" class="text-xs" tabindex="0"></pre>
+  </details>
+</div>
+
 </div>
 
 <script>
-document.getElementById('bf').addEventListener('submit', async e => {
-  e.preventDefault();
-  const fd = new FormData(e.target);
-  const r = await fetch('/api/backup/download', {method:'POST', body:fd, headers: csrfHeaders()});
-  if (r.status === 200) {
-    const blob = await r.blob();
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a'); a.href = url;
-    a.download = `privacypi-backup-${new Date().toISOString().slice(0,10)}.bin`;
-    a.click(); URL.revokeObjectURL(url);
-    window.toast('Backup downloaded', 'ok');
-  } else {
-    window.toast('Failed: wrong password?', 'danger');
-  }
-});
+(function () {
+  const $ = id => document.getElementById(id);
+  const NET_ERR = 'Could not reach PrivacyPi. Make sure you are still connected to its WiFi, then try again.';
 
-document.getElementById('rf').addEventListener('submit', async e => {
-  e.preventDefault();
-  if (!confirm('Restore will overwrite current config and restart Flask. Continue?')) return;
-  const fd = new FormData(e.target);
-  const r = await fetch('/api/backup/restore', {method:'POST', body:fd, headers: csrfHeaders()});
-  const out = document.getElementById('rf-result');
-  out.style.display = 'block';
-  if (r.status === 200) {
-    const d = await r.json();
-    out.textContent = (d.stdout || '') + (d.stderr ? '\n[stderr]\n' + d.stderr : '');
-    window.toast(d.ok ? 'Restore complete — Flask restarting' : 'Restore failed', d.ok ? 'ok' : 'danger');
-  } else {
-    out.textContent = await r.text();
-    window.toast('Failed: ' + r.status, 'danger');
+  function status(id, text, cls) {
+    const el = $(id);
+    el.textContent = text || '';
+    el.className = 'bk-status ' + (cls || '');
   }
-});
+
+  $('bf').addEventListener('submit', async e => {
+    e.preventDefault();
+    const btn = $('bk-btn');
+    btn.disabled = true; btn.textContent = 'Creating backup…';
+    status('bk-status', 'Creating your backup. This takes a few seconds…');
+    try {
+      const r = await fetch('/api/backup/download', {method: 'POST', body: new FormData(e.target), headers: csrfHeaders()});
+      if (r.status === 200 && !r.redirected) {
+        const blob = await r.blob();
+        if (!blob.size) throw new Error('empty');
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'privacypi-backup-' + new Date().toISOString().slice(0, 10) + '.bin';
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 10000);
+        $('bk-pw').value = '';
+        status('bk-status', 'Backup downloaded. Look in your Downloads folder and keep the file safe. Remember: you need today\'s dashboard password to use it.', 'text-ok');
+        window.toast('Backup downloaded', 'ok');
+      } else if (r.status === 401) {
+        status('bk-status', 'That password is not right. Type your dashboard password and try again.', 'text-danger');
+        window.toast('Wrong password', 'danger');
+      } else if (r.redirected) {
+        status('bk-status', 'You were signed out. Reload the page and sign in again.', 'text-danger');
+      } else {
+        status('bk-status', 'The backup could not be created. Please try again in a minute.', 'text-danger');
+        window.toast('Backup failed', 'danger');
+      }
+    } catch (err) {
+      status('bk-status', err && err.message === 'empty' ? 'The backup came out empty. Please try again.' : NET_ERR, 'text-danger');
+      window.toast('Backup failed', 'danger');
+    } finally {
+      btn.disabled = false; btn.textContent = 'Download backup';
+    }
+  });
+
+  $('rf').addEventListener('submit', async e => {
+    e.preventDefault();
+    const file = $('rf-file').files[0];
+    if (!file) { status('rf-status', 'Choose a backup file first.', 'text-danger'); return; }
+    if (!confirm('Restore "' + file.name + '"?\n\nAll current settings on this PrivacyPi are replaced by the ones in the backup. This cannot be undone. The internet may pause for up to a minute.')) return;
+    const btn = $('rf-btn');
+    const details = $('rf-details'), out = $('rf-result');
+    details.hidden = true; out.textContent = '';
+    btn.disabled = true; btn.textContent = 'Restoring… please wait';
+    status('rf-status', 'Restoring. Do not close this page or unplug PrivacyPi…');
+    try {
+      const r = await fetch('/api/backup/restore', {method: 'POST', body: new FormData(e.target), headers: csrfHeaders()});
+      let d = null;
+      try { d = await r.json(); } catch (err) {}
+      if (r.status === 401) {
+        status('rf-status', 'That password is not right. It must be your current dashboard password.', 'text-danger');
+        window.toast('Wrong password', 'danger');
+      } else if (d && d.ok) {
+        status('rf-status', 'Restore complete. PrivacyPi is restarting its services — wait about a minute, then reload this page and sign in.', 'text-ok');
+        window.toast('Restore complete', 'ok');
+        e.target.reset();
+      } else if (d) {
+        status('rf-status', 'Restore did not work, and your current settings were most likely left as they are. The most common reasons: the file is not a PrivacyPi backup, or it was made when the dashboard had a different password.', 'text-danger');
+        const raw = ((d.stdout || '') + (d.stderr ? '\n' + d.stderr : '') + (d.error ? '\n' + d.error : '')).trim();
+        if (raw) { out.textContent = raw; details.hidden = false; }
+        window.toast('Restore did not work', 'danger');
+      } else {
+        status('rf-status', 'PrivacyPi stopped answering while restoring. That usually means the restore finished and the dashboard is restarting. Wait about a minute, then reload this page.', '');
+      }
+    } catch (err) {
+      // The dashboard restarts at the end of a restore, so a dropped connection is expected.
+      status('rf-status', 'The connection dropped while restoring. That usually means the restore finished and the dashboard is restarting. Wait about a minute, then reload this page. If your settings are not back, try again.', '');
+    } finally {
+      btn.disabled = false; btn.textContent = 'Restore this backup';
+    }
+  });
+})();
 </script>
 {% endblock %}

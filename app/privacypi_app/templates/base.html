@@ -2,84 +2,75 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#07090f">
+  <meta name="format-detection" content="telephone=no">
   <title>{% block title %}PrivacyPi{% endblock %}</title>
   <meta name="csrf-token" content="{{ csrf_token() }}">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%94%92%3C/text%3E%3C/svg%3E">
   <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
 </head>
 <body>
 {% if current_user.is_authenticated %}
-<button class="sidebar-toggle" id="sb-toggle" aria-label="Menu">☰</button>
+<a class="skip-link" href="#main">Skip to content</a>
+<button class="sidebar-toggle" id="sb-toggle" type="button" aria-label="Open menu" aria-controls="sb" aria-expanded="false"><span aria-hidden="true">☰</span></button>
 <div class="sidebar-overlay" id="sb-overlay"></div>
 <div class="app">
   <aside class="sidebar" id="sb">
     <div class="brand">
-      <div class="lock">🔒</div>
+      <div class="lock" aria-hidden="true">🔒</div>
       <span>PrivacyPi</span>
     </div>
-    <div class="nav-section">Overview</div>
-    <a class="nav-item {% if request.path == '/' %}active{% endif %}" href="/">
-      <span class="nav-icon">📊</span> Dashboard
+    {% macro nav(path, icon, label) -%}
+    <a class="nav-item {% if request.path == path %}active{% endif %}" href="{{ path }}"{% if request.path == path %} aria-current="page"{% endif %}>
+      <span class="nav-icon" aria-hidden="true">{{ icon }}</span> {{ label }}
     </a>
-    <a class="nav-item {% if request.path == '/network' %}active{% endif %}" href="/network">
-      <span class="nav-icon">🌍</span> Internet
-    </a>
-    <a class="nav-item {% if request.path == '/devices' %}active{% endif %}" href="/devices">
-      <span class="nav-icon">📱</span> Devices
-    </a>
-    <div class="nav-section">Privacy</div>
-    <a class="nav-item {% if request.path == '/modes' %}active{% endif %}" href="/modes">
-      <span class="nav-icon">🔀</span> Routing
-    </a>
-    <a class="nav-item {% if request.path == '/vpn' %}active{% endif %}" href="/vpn">
-      <span class="nav-icon">🔐</span> VPN providers
-    </a>
-    <a class="nav-item {% if request.path == '/tor' %}active{% endif %}" href="/tor">
-      <span class="nav-icon">🧅</span> Tor
-    </a>
-    <a class="nav-item {% if request.path == '/proxies' %}active{% endif %}" href="/proxies">
-      <span class="nav-icon">🛰️</span> Proxies
-    </a>
-    <a class="nav-item {% if request.path == '/dns' %}active{% endif %}" href="/dns">
-      <span class="nav-icon">🌐</span> DNS
-    </a>
-    <div class="nav-section">Tools</div>
-    <a class="nav-item {% if request.path == '/wg-server' %}active{% endif %}" href="/wg-server"><span class="nav-icon">📲</span> Travel (WG)</a>
-    <a class="nav-item {% if request.path == '/trust' %}active{% endif %}" href="/trust"><span class="nav-icon">🔏</span> Trust this device</a>
-    <a class="nav-item {% if request.path == '/diagnostics' %}active{% endif %}" href="/diagnostics">
-      <span class="nav-icon">🩺</span> Diagnostics
-    </a>
-    <a class="nav-item {% if request.path == '/extras' %}active{% endif %}" href="/extras"><span class="nav-icon">🧩</span> Extras</a>
-    <a class="nav-item {% if request.path == '/backup' %}active{% endif %}" href="/backup">
-      <span class="nav-icon">💾</span> Backup
-    </a>
-    <div class="nav-section">Admin</div>
-    <a class="nav-item {% if request.path == '/system' %}active{% endif %}" href="/system">
-      <span class="nav-icon">⚙️</span> System
-    </a>
-    <a class="nav-item {% if request.path == '/alerts' %}active{% endif %}" href="/alerts"><span class="nav-icon">🔔</span> Alerts</a>
-    <a class="nav-item {% if request.path == '/audit' %}active{% endif %}" href="/audit">
-      <span class="nav-icon">📋</span> Audit log
-    </a>
+    {%- endmacro %}
+    <nav aria-label="Main menu">
+      <div class="nav-section">Home</div>
+      {{ nav('/', '📊', 'Dashboard') }}
+      {{ nav('/network', '🌍', 'Internet & WiFi') }}
+      {{ nav('/devices', '📱', 'Devices') }}
+      <div class="nav-section">Privacy</div>
+      {{ nav('/modes', '🔀', 'Privacy mode') }}
+      {{ nav('/vpn', '🔐', 'VPN') }}
+      {{ nav('/tor', '🧅', 'Tor') }}
+      {{ nav('/proxies', '🛰️', 'Proxies') }}
+      {{ nav('/dns', '🌐', 'Ad blocking') }}
+      <div class="nav-section">Tools</div>
+      {{ nav('/wg-server', '📲', 'Use it away from home') }}
+      {{ nav('/trust', '🔏', 'Trust this device') }}
+      {{ nav('/diagnostics', '🩺', 'Troubleshooting') }}
+      {{ nav('/extras', '🧩', 'Extras') }}
+      {{ nav('/backup', '💾', 'Backup & restore') }}
+      <div class="nav-section">Settings</div>
+      {{ nav('/system', '⚙️', 'System & password') }}
+      {{ nav('/alerts', '🔔', 'Alerts') }}
+      {{ nav('/audit', '📋', 'Activity log') }}
+      <div class="nav-section">Advanced</div>
+      {{ nav('/privacy', '🛡️', 'Extra protection') }}
+      {{ nav('/advanced', '🧰', 'Advanced tools') }}
+    </nav>
   </aside>
 
-  <main class="main">
+  <main class="main" id="main">
     <div class="topbar">
       <div>
         <h1>{% block heading %}{% endblock %}</h1>
         <div class="sub">{% block subheading %}{% endblock %}</div>
       </div>
       <div class="user-chip">
-        <span>👤 {{ current_user.username }}</span>
-        <a href="/logout">log out</a>
+        <span class="user-name"><span aria-hidden="true">👤</span> {{ current_user.username }}</span>
+        <a href="/logout">Log out</a>
       </div>
     </div>
 
-    <div class="toast-stack" id="toast-stack"></div>
+    <div class="toast-stack" id="toast-stack" role="status" aria-live="polite"></div>
 
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% for cat, msg in messages %}
-        <div class="toast {{ 'danger' if cat=='error' else 'ok' }} mb-4">{{ msg }}</div>
+        <div class="toast flash {{ 'danger' if cat=='error' else 'ok' }} mb-4" role="{{ 'alert' if cat=='error' else 'status' }}">{{ msg }}</div>
       {% endfor %}
     {% endwith %}
 
@@ -88,19 +79,20 @@
 </div>
 {% else %}
 <div class="auth-shell">
-  <div class="auth-card">
-    <div class="brand mb-4" style="border:none;padding:0;margin-bottom:24px">
-      <div class="lock">🔒</div>
+  <main class="auth-card" id="main">
+    <div class="brand auth-brand">
+      <div class="lock" aria-hidden="true">🔒</div>
       <span>PrivacyPi</span>
     </div>
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% for cat, msg in messages %}
-        <div class="toast {{ 'danger' if cat=='error' else 'ok' }} mb-4">{{ msg }}</div>
+        <div class="toast flash {{ 'danger' if cat=='error' else 'ok' }} mb-4" role="{{ 'alert' if cat=='error' else 'status' }}">{{ msg }}</div>
       {% endfor %}
     {% endwith %}
     {% block guest_content %}{{ self.content() }}{% endblock %}
-  </div>
+  </main>
 </div>
+<div class="toast-stack" id="toast-stack" role="status" aria-live="polite"></div>
 {% endif %}
 
 <script>
@@ -124,13 +116,151 @@ window.csrfHeaders = function() {
   const sb = document.getElementById('sb');
   const ov = document.getElementById('sb-overlay');
   if (!t || !sb || !ov) return;
-  function close() { sb.classList.remove('open'); ov.classList.remove('open'); }
-  t.addEventListener('click', () => {
-    const open = sb.classList.toggle('open');
+  function set(open) {
+    sb.classList.toggle('open', open);
     ov.classList.toggle('open', open);
+    t.setAttribute('aria-expanded', open ? 'true' : 'false');
+    t.setAttribute('aria-label', open ? 'Close menu' : 'Open menu');
+    t.firstElementChild.textContent = open ? '✕' : '☰';
+  }
+  t.addEventListener('click', () => set(!sb.classList.contains('open')));
+  ov.addEventListener('click', () => set(false));
+  sb.querySelectorAll('a').forEach(a => a.addEventListener('click', () => set(false)));
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && sb.classList.contains('open')) { set(false); t.focus(); }
   });
-  ov.addEventListener('click', close);
-  sb.querySelectorAll('a').forEach(a => a.addEventListener('click', close));
+})();
+
+// Labels: connect each ".field" label to its control so tapping the label
+// focuses the field and screen readers announce it.
+(function(){
+  let n = 0;
+  document.querySelectorAll('.field').forEach(field => {
+    const labels = field.querySelectorAll('label:not([for])');
+    const ctrls = field.querySelectorAll('input:not([type=hidden]), select, textarea');
+    if (labels.length !== 1 || ctrls.length !== 1 || labels[0].contains(ctrls[0])) return;
+    if (!ctrls[0].id) ctrls[0].id = 'fld-auto-' + (++n);
+    labels[0].htmlFor = ctrls[0].id;
+  });
+})();
+
+// Show / hide button on every password field (opt out with data-no-toggle).
+(function(){
+  const MOVE = ['flex', 'width', 'maxWidth', 'minWidth', 'marginTop', 'marginRight', 'marginBottom', 'marginLeft'];
+  function reset(inp, btn) {
+    inp.type = 'password';
+    btn.textContent = 'Show';
+    btn.setAttribute('aria-label', 'Show password');
+    btn.setAttribute('aria-pressed', 'false');
+  }
+  document.querySelectorAll('input[type="password"]').forEach(inp => {
+    const parent = inp.parentNode;
+    if (!parent || inp.closest('.pw-wrap') || inp.hasAttribute('data-no-toggle') || inp.style.display === 'none') return;
+    const hadFocus = document.activeElement === inp;
+    const wrap = document.createElement('span');
+    wrap.className = 'pw-wrap';
+    // The wrapper takes over the field's place in its row/grid.
+    const ps = getComputedStyle(parent);
+    if (!inp.style.flex && ps.display.indexOf('flex') !== -1 && ps.flexDirection.indexOf('row') === 0) {
+      wrap.style.flex = '0 1 100%';
+    }
+    MOVE.forEach(k => { if (inp.style[k]) { wrap.style[k] = inp.style[k]; inp.style[k] = ''; } });
+    Array.from(inp.classList).forEach(c => {
+      if (/^m[tb]-\d$/.test(c)) { wrap.classList.add(c); inp.classList.remove(c); }
+    });
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'pw-toggle';
+    reset(inp, btn);
+    btn.addEventListener('click', () => {
+      if (inp.type === 'password') {
+        inp.type = 'text';
+        btn.textContent = 'Hide';
+        btn.setAttribute('aria-label', 'Hide password');
+        btn.setAttribute('aria-pressed', 'true');
+      } else {
+        reset(inp, btn);
+      }
+    });
+    parent.insertBefore(wrap, inp);
+    wrap.appendChild(inp);
+    wrap.appendChild(btn);
+    if (hadFocus) inp.focus();
+  });
+  // Always send (and let the browser save) the field as a real password field.
+  document.addEventListener('submit', e => {
+    if (!e.target.querySelectorAll) return;
+    e.target.querySelectorAll('.pw-wrap > input').forEach(inp => {
+      if (inp.type !== 'password') reset(inp, inp.nextElementSibling);
+    });
+  }, true);
+})();
+
+// Form helpers (opt-in through data attributes):
+//   data-match="<id>"  + data-msg="<id>"  → "type it again" check before submit
+//   data-meter="<id>"                     → live "N more characters" hint (uses minlength)
+(function(){
+  function say(el, text, kind) {
+    if (!el) return;
+    el.textContent = text;
+    el.className = 'field-msg' + (kind ? ' ' + kind : '');
+  }
+  document.querySelectorAll('input[data-meter]').forEach(inp => {
+    const msg = document.getElementById(inp.dataset.meter);
+    if (!msg) return;
+    const min = parseInt(inp.getAttribute('minlength'), 10) || 0;
+    const initial = msg.textContent;
+    inp.addEventListener('input', () => {
+      const len = inp.value.length;
+      if (!len) say(msg, initial, '');
+      else if (len < min) say(msg, (min - len) + ' more character' + (min - len === 1 ? '' : 's') + ' needed', 'warn');
+      else if (len >= Math.max(min + 4, 14)) say(msg, '✓ Strong — nice and long', 'ok');
+      else say(msg, '✓ Long enough. Longer is stronger.', 'ok');
+    });
+  });
+  document.querySelectorAll('input[data-match]').forEach(conf => {
+    const src = document.getElementById(conf.dataset.match);
+    const msg = document.getElementById(conf.dataset.msg || '');
+    if (!src) return;
+    function check(final) {
+      const a = src.value, b = conf.value;
+      const bad = b !== '' && a !== b;
+      conf.setCustomValidity(bad ? "The two passwords don't match." : '');
+      if (!b) say(msg, '', '');
+      else if (!bad) say(msg, '✓ They match', 'ok');
+      else if (!final && a.indexOf(b) === 0) say(msg, '', '');   // still typing
+      else say(msg, "These two don't match yet.", 'bad');
+    }
+    conf.addEventListener('input', () => check(false));
+    conf.addEventListener('blur', () => check(true));
+    src.addEventListener('input', () => check(true));
+  });
+})();
+
+// Stop double submits: after a normal form submit, lock its buttons and show a
+// spinner. Skipped when a script cancels the submit, or with data-no-busy.
+(function(){
+  const locked = new Set();
+  function release() {
+    locked.forEach(b => { b.disabled = false; b.removeAttribute('aria-busy'); });
+    locked.clear();
+  }
+  document.addEventListener('submit', e => {
+    const form = e.target;
+    if (!(form instanceof HTMLFormElement) || form.hasAttribute('data-no-busy')) return;
+    const submitter = e.submitter;
+    setTimeout(() => {
+      if (e.defaultPrevented) return;
+      if (form.target && form.target !== '_self') return;
+      const btns = form.querySelectorAll('button[type=submit], button:not([type]), input[type=submit]');
+      btns.forEach(b => { if (!b.disabled) { b.disabled = true; locked.add(b); } });
+      const main = (submitter && locked.has(submitter)) ? submitter : btns[0];
+      if (main && locked.has(main)) main.setAttribute('aria-busy', 'true');
+      // File downloads never leave the page — give the buttons back.
+      setTimeout(release, 8000);
+    }, 0);
+  });
+  window.addEventListener('pageshow', release);
 })();
 </script>
 </body>

@@ -3,7 +3,7 @@
 # Usage: self-update.sh check | apply
 set -uo pipefail
 ACTION="${1:-check}"
-REPO_DIR="${PRIVACYPI_REPO_DIR:-/Users/mogli/Desktop/VPN}"
+REPO_DIR="${PRIVACYPI_REPO_DIR:-/opt/privacypi}"
 
 # This script is meant to run on a Pi where the app was deployed FROM the Mac.
 # In a self-hostable installation, REPO_DIR would be /opt/privacypi/repo and the

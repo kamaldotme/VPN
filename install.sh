@@ -77,7 +77,7 @@ apt-get install -y --no-install-recommends \
   >> "$LOG_FILE" 2>&1 || die "apt install failed — see $LOG_FILE"
 # Nice-to-have packages whose names/availability vary between releases.
 for pkg in obfs4proxy snowflake-client macchanger vnstat usbutils socat bind9-host \
-           netcat-openbsd speedtest-cli torsocks bsdextrautils; do
+           netcat-openbsd speedtest-cli torsocks bsdextrautils xxd traceroute bind9-dnsutils; do
   apt-get install -y --no-install-recommends "$pkg" >> "$LOG_FILE" 2>&1 || warn "optional package $pkg unavailable"
 done
 
@@ -248,6 +248,18 @@ fi
 # Bluetooth is unused: less radio noise next to the WiFi AP, smaller attack surface.
 for unit in bluetooth.service hciuart.service; do sc_q disable "$unit"; sc_q mask "$unit"; done
 
+# vnstat (traffic totals on the dashboard): the Pi's interface counters are
+# 64-bit. Left on "auto", vnstat mistakes the counter reset at every boot for a
+# 32-bit rollover whenever the clock jumps at boot (no battery clock), and adds
+# a phantom 4 GiB per restart.
+if [[ -f /etc/vnstat.conf ]]; then
+  if grep -qE '^;?[[:space:]]*64bitInterfaceCounters' /etc/vnstat.conf; then
+    sed -i -E 's/^;?[[:space:]]*64bitInterfaceCounters.*/64bitInterfaceCounters 1/' /etc/vnstat.conf
+  else
+    echo '64bitInterfaceCounters 1' >> /etc/vnstat.conf
+  fi
+fi
+
 # Keep the journal small on an SD card
 install -d /etc/systemd/journald.conf.d
 # Persistent, so a crash or freeze leaves evidence for the next boot.
@@ -321,7 +333,7 @@ fi
 if [[ "$IMAGE_BUILD" == "1" ]]; then
   # Nothing device-specific may be baked into an image. boot-init.sh provisions
   # the device on its first boot.
-  rm -f "$ETC_PRIVACYPI"/{.provisioned,setup-complete,master.key,secret.key,secret.env,alert.secret,adguard.creds,wifi-psk.txt}
+  rm -f "$ETC_PRIVACYPI"/{.provisioned,setup-complete,master.key,secret.key,secret.env,alert.secret,adguard.creds,adguard.cred,wifi-psk.txt}
   rm -f /opt/AdGuardHome/AdGuardHome.yaml /etc/hostapd/hostapd.conf /etc/caddy/Caddyfile
   rm -f /var/lib/privacypi/privacypi.db
   log "    image build: secrets deferred to first boot"

@@ -66,6 +66,13 @@ if [[ -x "$AGH/AdGuardHome" && ! -s "$AGH/AdGuardHome.yaml" ]]; then
   fi
 fi
 
+# The dashboard's own features (live DNS view, insights, blocklist refresh)
+# talk to AdGuard Home's API with "user:password" from this file.
+if [[ -s "$ETC/adguard.creds" && ! -s "$ETC/adguard.cred" ]]; then
+  printf 'admin:%s\n' "$(sed -n 2p "$ETC/adguard.creds")" > "$ETC/adguard.cred"
+  chmod 640 "$ETC/adguard.cred"; chown root:privacypi "$ETC/adguard.cred"
+fi
+
 # Caddy front-end: HTTP + HTTPS on the LAN names (and HOST_IP when set).
 if [[ -f "$PREFIX/system/etc/caddy/Caddyfile.template" ]]; then
   host_ip=$(awk -F'[= ]' '/^HOST_IP=/{print $2; exit}' "$SITE_CONF" 2>/dev/null)

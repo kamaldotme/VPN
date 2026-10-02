@@ -1,33 +1,98 @@
 {% extends "base.html" %}
-{% block heading %}DNS Settings{% endblock %}
-{% block subheading %}AdGuard Home → Unbound recursive → encrypted upstream. 891k filter rules.{% endblock %}
+{% block heading %}Ad &amp; tracker blocking{% endblock %}
+{% block subheading %}PrivacyPi blocks ads, trackers and dangerous sites for every device on your WiFi — no apps to install.{% endblock %}
 {% block content %}
+<style>
+.pg-dns .btn { min-height: 44px; justify-content: center; }
+.pg-dns .btn:disabled { opacity: .55; cursor: not-allowed; }
+.pg-dns :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.pg-dns .muted { color: #9aa3b8; }
+.pg-dns .prof-list { display: grid; gap: 8px; grid-template-columns: repeat(auto-fill, minmax(min(240px, 100%), 1fr)); margin-top: 12px; }
+.pg-dns .dns-prof { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left; width: 100%;
+  padding: 12px 14px; min-height: 64px; background: var(--bg-2); border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
+  color: var(--text-0); font-family: inherit; cursor: pointer; }
+.pg-dns .dns-prof:hover { border-color: var(--text-2); }
+.pg-dns .dns-prof:disabled { opacity: .55; cursor: progress; }
+.pg-dns .dns-prof .pn { font-size: 14.5px; font-weight: 600; display: flex; align-items: center; gap: 8px; width: 100%; }
+.pg-dns .dns-prof .pd { font-size: 12.5px; color: #9aa3b8; line-height: 1.4; }
+.pg-dns .dns-prof .sel { display: none; margin-left: auto; }
+.pg-dns .dns-prof[aria-checked=true] { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.pg-dns .dns-prof[aria-checked=true] .pn { color: var(--accent); }
+.pg-dns .dns-prof[aria-checked=true] .sel { display: inline-flex; }
+.pg-dns #dns-msg { min-height: 1.2em; margin: 12px 0 0; overflow-wrap: anywhere; }
+@media (max-width: 768px) { .pg-dns .act { width: 100%; } }
+</style>
+
+{% set desc = {
+  'Light': 'Ads and trackers only. Least likely to break a website.',
+  'Standard': 'Recommended. Ads, trackers and known dangerous sites.',
+  'Strict': 'Standard, plus known phishing and malware sites are blocked.',
+  'Family': 'Strict, plus adult content is blocked and safe search is switched on.',
+  'IoT': 'For smart-home gadgets: stops them reporting back to their makers.',
+  'Custom': 'Your own choice of block lists, set up in the control panel below.',
+} %}
+
+<div class="pg-dns">
 
 <div class="card mb-4">
-  <p class="card-title">Filtering profile</p>
-  <p class="text-sm text-muted">Currently: <strong class="text-accent" id="current">{{ current }}</strong></p>
-  <div class="flex gap-2 mt-3" style="flex-wrap:wrap">
+  <p class="card-title muted">Blocking level</p>
+  <p class="text-sm muted" style="margin:0">Selected: <strong class="text-accent" id="current">{{ 'Smart home' if current == 'IoT' else current }}</strong></p>
+  <div class="prof-list" role="radiogroup" aria-label="Blocking level">
     {% for p in profiles %}
-    <button class="btn btn-sm dns-prof" data-profile="{{ p }}">{{ p }}</button>
+    <button type="button" class="dns-prof" role="radio" aria-checked="{{ 'true' if p == current else 'false' }}" data-profile="{{ p }}">
+      <span class="pn">{{ 'Smart home' if p == 'IoT' else p }} <span class="badge ok sel">Selected</span></span>
+      <span class="pd">{{ desc.get(p, '') }}</span>
+    </button>
     {% endfor %}
   </div>
+  <p id="dns-msg" class="text-sm muted" role="status" aria-live="polite"></p>
+  <p class="text-sm muted" style="margin:10px 0 0">The level applies to every device on your WiFi within a few seconds.</p>
 </div>
 
 <div class="card">
-  <p class="card-title">AdGuard Home dashboard</p>
-  <p class="text-sm text-muted">Per-client filtering, DNS upstream choice (DoH/DoT/DoQ), live query log.</p>
-  <a class="btn btn-primary mt-3" href="http://{{ lan_gw }}:3000" target="_blank">Open AdGuard →</a>
+  <p class="card-title muted">Blocking control panel (advanced)</p>
+  <p class="text-sm muted">
+    PrivacyPi uses a built-in blocker called AdGuard Home. Its control panel lets you allow a site that was blocked by mistake,
+    add block lists and see what each device looked up. It opens in a new tab and has its own sign-in.
+  </p>
+  <a class="btn mt-3 act" id="adg-link" href="http://{{ lan_gw|default('10.10.10.1', true) }}:3000" target="_blank" rel="noopener noreferrer">Open the control panel ↗</a>
+</div>
+
 </div>
 
 <script>
-document.querySelectorAll('.dns-prof').forEach(b => b.addEventListener('click', async () => {
-  const fd = new FormData(); fd.append('profile', b.dataset.profile);
-  const r = await fetch('/api/dns/profile', {method:'POST', body:fd, headers: csrfHeaders()});
-  const d = await r.json();
+// Open the control panel on whatever address this dashboard was reached at.
+try { document.getElementById('adg-link').href = 'http://' + location.hostname + ':3000'; } catch (_) {}
+const profBtns = Array.from(document.querySelectorAll('.dns-prof'));
+function dnsMsg(text, kind) {
+  const m = document.getElementById('dns-msg');
+  m.textContent = text;
+  m.className = 'text-sm ' + (kind === 'ok' ? 'text-ok' : kind === 'danger' ? 'text-danger' : 'muted');
+}
+profBtns.forEach(b => b.addEventListener('click', async () => {
+  if (b.getAttribute('aria-checked') === 'true') return;
+  const label = b.querySelector('.pn').firstChild.textContent.trim();
+  profBtns.forEach(x => { x.disabled = true; });
+  dnsMsg('Saving…', '');
+  let d;
+  try {
+    const fd = new FormData(); fd.append('profile', b.dataset.profile);
+    const r = await fetch('/api/dns/profile', {method: 'POST', body: fd, headers: csrfHeaders()});
+    try { d = await r.json(); } catch (_) { d = {ok: false, error: r.redirected ? 'You were signed out. Reload this page and sign in again.' : 'PrivacyPi gave an unexpected answer (code ' + r.status + ').'}; }
+  } catch (e) {
+    d = {ok: false, error: 'Could not reach PrivacyPi. Make sure you are still on its WiFi, then try again.'};
+  }
+  profBtns.forEach(x => { x.disabled = false; });
   if (d.ok) {
-    document.getElementById('current').textContent = d.profile;
-    window.toast('DNS profile: ' + d.profile, 'ok');
-  } else { window.toast('Failed: ' + d.error, 'danger'); }
+    profBtns.forEach(x => x.setAttribute('aria-checked', x.dataset.profile === d.profile ? 'true' : 'false'));
+    document.getElementById('current').textContent = label;
+    dnsMsg('✓ Saved: ' + label + '.', 'ok');
+    window.toast('Blocking level: ' + label, 'ok');
+  } else {
+    const why = (typeof d.error === 'string' && d.error.trim()) ? d.error.trim() : 'The level could not be saved.';
+    dnsMsg('✗ ' + (why === 'invalid profile' ? 'That level is not available.' : why), 'danger');
+    window.toast('Blocking level was not saved', 'danger');
+  }
 }));
 </script>
 {% endblock %}

@@ -1,63 +1,230 @@
 {% extends "base.html" %}
 {% block heading %}Schedule{% endblock %}
-{% block subheading %}Time-based routing. Rules apply every minute. First match wins.{% endblock %}
+{% block subheading %}Switch privacy mode automatically at certain times of the day.{% endblock %}
 {% block content %}
+<style>
+  .sc-page [hidden] { display: none !important; }
+  .sc-page .btn, .sc-page .btn-sm { min-height: 44px; padding: 9px 16px; font-size: 13.5px; }
+  .sc-page .btn:disabled { opacity: .6; cursor: progress; }
+  .sc-page .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .sc-page input:not([type=checkbox]), .sc-page select { min-height: 44px; font-size: 16px; }
+  .sc-page .text-muted { color: var(--text-1); }
+  .sc-notice { border: 1px solid rgba(251,191,36,.35); background: rgba(251,191,36,.08); border-radius: var(--radius);
+    padding: 12px 14px; font-size: 13.5px; }
+  .sc-rule { border: 1px solid var(--border-strong); border-radius: var(--radius); padding: 14px; margin-bottom: 12px; background: var(--bg-2); }
+  .sc-rule-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 10px; }
+  .sc-rule-head strong { font-size: 13px; color: var(--text-1); }
+  .sc-rule input, .sc-rule select { background: var(--bg-1); }
+  .sc-two { display: grid; gap: 0 12px; grid-template-columns: 1fr 1fr; }
+  .sc-days { border: none; padding: 0; margin: 0; }
+  .sc-days legend { font-size: 12px; font-weight: 500; color: var(--text-1); margin-bottom: 6px; padding: 0; }
+  .sc-daylist { display: flex; gap: 6px; flex-wrap: wrap; }
+  .sc-day { position: relative; }
+  .sc-day input { position: absolute; opacity: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; }
+  .sc-day span { display: grid; place-items: center; min-width: 44px; height: 44px; padding: 0 6px; border-radius: var(--radius-sm);
+    border: 1px solid var(--border-strong); background: var(--bg-1); font-size: 12.5px; color: var(--text-1); }
+  .sc-day input:checked + span { background: var(--accent); border-color: var(--accent); color: var(--bg-0); font-weight: 600; }
+  .sc-day input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .sc-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .sc-status { font-size: 13px; margin: 12px 0 0; min-height: 1.4em; }
+  .sc-examples { margin: 0; padding-left: 20px; font-size: 13px; color: var(--text-1); line-height: 1.8; }
+</style>
+
+<div class="sc-page">
+
+<div class="sc-notice mb-4" role="note">
+  <strong>This feature is not active in this release yet.</strong>
+  You can prepare and save a schedule here, but PrivacyPi will not switch modes automatically yet.
+</div>
 
 <div class="card mb-4">
-  <p class="card-title">Active rules</p>
-  <table>
-    <thead><tr><th>Name</th><th>Mode</th><th>Window</th><th>Days</th><th></th></tr></thead>
-    <tbody id="rules-body"></tbody>
-  </table>
-  <button class="btn mt-3" id="add-rule">+ Add rule</button>
-  <button class="btn btn-primary mt-3" id="save-rules">Save schedule</button>
+  <p class="card-title">Your schedule</p>
+  <p class="text-sm text-muted mb-3">
+    Each rule says: between these times, on these days, use this privacy mode.
+    If two rules cover the same time, the one higher up in the list wins. Outside all rules, your normal mode is used.
+  </p>
+  <div id="rules-body"></div>
+  <div class="sc-actions">
+    <button class="btn" id="add-rule" type="button">+ Add a rule</button>
+    <button class="btn btn-primary" id="save-rules" type="button">Save schedule</button>
+  </div>
+  <p class="sc-status" id="sc-status" role="status" aria-live="polite"></p>
 </div>
 
 <div class="card">
-  <p class="card-title">Examples</p>
-  <pre class="text-xs">{ "name": "tor-night", "mode": "tor", "start": "22:00", "end": "07:00", "days": [0,1,2,3,4,5,6] }
-{ "name": "direct-work-hours", "mode": "direct", "start": "09:00", "end": "17:00", "days": [1,2,3,4,5] }</pre>
-  <p class="text-xs text-muted mt-2">Days: Sun=0, Mon=1, ..., Sat=6. End before start = crosses midnight.</p>
+  <p class="card-title">Ideas</p>
+  <ul class="sc-examples">
+    <li><b>Extra privacy at night:</b> Tor from 22:00 to 07:00, every day.</li>
+    <li><b>Full speed during work:</b> Normal internet from 09:00 to 17:00, Monday to Friday.</li>
+    <li><b>Bedtime for the internet:</b> Block all internet from 23:00 to 06:00.</li>
+  </ul>
+  <p class="text-xs text-muted mt-3" style="margin-bottom:0">If the end time is earlier than the start time, the rule runs past midnight into the next morning.</p>
+</div>
+
 </div>
 
 <script>
-let rules = {{ schedule|tojson }};
-function render() {
-  document.getElementById('rules-body').innerHTML = rules.length === 0 ?
-    '<tr><td colspan="5" class="text-muted text-sm" style="padding:20px;text-align:center">No rules yet</td></tr>' :
-    rules.map((r,i) => `
-    <tr>
-      <td><input value="${r.name||''}" data-i="${i}" data-k="name"></td>
-      <td><select data-i="${i}" data-k="mode">
-        ${['direct','tor','openvpn','wireguard','proxy','killswitch'].map(m =>
-          `<option value="${m}" ${r.mode===m?'selected':''}>${m}</option>`).join('')}
-      </select></td>
-      <td><input value="${r.start||''}" data-i="${i}" data-k="start" placeholder="22:00" style="width:80px"> to
-          <input value="${r.end||''}" data-i="${i}" data-k="end" placeholder="07:00" style="width:80px"></td>
-      <td><input value="${(r.days||[0,1,2,3,4,5,6]).join(',')}" data-i="${i}" data-k="days" placeholder="0,1,2..." style="width:120px"></td>
-      <td><button class="btn btn-sm btn-danger del-rule" data-i="${i}">×</button></td>
-    </tr>
-  `).join('');
-  document.querySelectorAll('[data-k]').forEach(el => el.addEventListener('change', e => {
-    const i = +e.target.dataset.i, k = e.target.dataset.k;
-    rules[i][k] = k === 'days' ? e.target.value.split(',').map(d=>+d).filter(d=>d>=0&&d<=6) : e.target.value;
-  }));
-  document.querySelectorAll('.del-rule').forEach(b => b.addEventListener('click', e => {
-    rules.splice(+e.target.dataset.i, 1); render();
-  }));
-}
-render();
-document.getElementById('add-rule').addEventListener('click', () => {
-  rules.push({name:'new-rule', mode:'direct', start:'09:00', end:'17:00', days:[0,1,2,3,4,5,6]});
-  render();
-});
-document.getElementById('save-rules').addEventListener('click', async () => {
-  const r = await fetch('/api/schedule', {
-    method:'POST', headers: {'Content-Type':'application/json', ...csrfHeaders()},
-    body: JSON.stringify(rules)
+(function () {
+  const MODES = [
+    ['direct', 'Normal internet (no extra privacy)'],
+    ['tor', 'Tor'],
+    ['openvpn', 'VPN (OpenVPN)'],
+    ['wireguard', 'VPN (WireGuard)'],
+    ['proxy', 'Proxy'],
+    ['killswitch', 'Block all internet'],
+  ];
+  const DAYS = [[1, 'Mon'], [2, 'Tue'], [3, 'Wed'], [4, 'Thu'], [5, 'Fri'], [6, 'Sat'], [0, 'Sun']];
+  const ALL_DAYS = [0, 1, 2, 3, 4, 5, 6];
+  const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+  let rules = {{ schedule|tojson }};
+  if (!Array.isArray(rules)) rules = [];
+  rules = rules.filter(r => r && typeof r === 'object');
+  let dirty = false, uid = 0;
+
+  const body = document.getElementById('rules-body');
+  const statusEl = document.getElementById('sc-status');
+  const saveBtn = document.getElementById('save-rules');
+
+  function el(tag, props, text) {
+    const e = document.createElement(tag);
+    if (props) for (const k in props) e[k] = props[k];
+    if (text != null) e.textContent = text;
+    return e;
+  }
+  function setStatus(text, cls) { statusEl.textContent = text || ''; statusEl.className = 'sc-status ' + (cls || ''); }
+  function markDirty() { dirty = true; setStatus('You have changes that are not saved yet.', 'text-warn'); }
+
+  function field(labelText, control) {
+    const id = 'sc-f' + (++uid);
+    control.id = id;
+    const wrap = el('div', {className: 'field'});
+    const lab = el('label', null, labelText);
+    lab.htmlFor = id;
+    wrap.appendChild(lab); wrap.appendChild(control);
+    return wrap;
+  }
+
+  function render() {
+    body.replaceChildren();
+    if (!rules.length) {
+      body.appendChild(el('p', {className: 'text-sm text-muted', style: 'margin:0 0 14px'}, 'No rules yet. Tap "Add a rule" to make your first one.'));
+      return;
+    }
+    rules.forEach((r, i) => {
+      const card = el('div', {className: 'sc-rule'});
+      const head = el('div', {className: 'sc-rule-head'});
+      head.appendChild(el('strong', null, 'Rule ' + (i + 1)));
+      const del = el('button', {className: 'btn btn-danger', type: 'button'}, 'Remove');
+      del.setAttribute('aria-label', 'Remove rule ' + (i + 1));
+      del.addEventListener('click', () => {
+        if (!confirm('Remove rule ' + (i + 1) + (r.name ? ' ("' + r.name + '")' : '') + '?\n\nIt is only removed for good when you tap "Save schedule".')) return;
+        rules.splice(i, 1); markDirty(); render();
+      });
+      head.appendChild(del);
+      card.appendChild(head);
+
+      const name = el('input', {value: r.name || '', maxLength: 64, placeholder: 'Night-time privacy'});
+      name.addEventListener('input', () => { r.name = name.value; markDirty(); });
+      card.appendChild(field('Name', name));
+
+      const mode = el('select');
+      const known = MODES.some(m => m[0] === r.mode);
+      (known || !r.mode ? MODES : MODES.concat([[r.mode, r.mode]])).forEach(m => {
+        const o = el('option', {value: m[0]}, m[1]);
+        if (m[0] === r.mode) o.selected = true;
+        mode.appendChild(o);
+      });
+      mode.addEventListener('change', () => { r.mode = mode.value; markDirty(); });
+      card.appendChild(field('Use this privacy mode', mode));
+
+      const two = el('div', {className: 'sc-two'});
+      const start = el('input', {type: 'time', value: TIME_RE.test(r.start || '') ? r.start : ''});
+      start.addEventListener('change', () => { r.start = start.value; markDirty(); });
+      two.appendChild(field('From', start));
+      const end = el('input', {type: 'time', value: TIME_RE.test(r.end || '') ? r.end : ''});
+      end.addEventListener('change', () => { r.end = end.value; markDirty(); });
+      two.appendChild(field('Until', end));
+      card.appendChild(two);
+
+      const fs = el('fieldset', {className: 'sc-days'});
+      fs.appendChild(el('legend', null, 'On these days'));
+      const list = el('div', {className: 'sc-daylist'});
+      const days = Array.isArray(r.days) ? r.days : ALL_DAYS.slice();
+      r.days = days;
+      DAYS.forEach(d => {
+        const lab = el('label', {className: 'sc-day'});
+        const cb = el('input', {type: 'checkbox', checked: days.indexOf(d[0]) !== -1});
+        cb.addEventListener('change', () => {
+          const set = new Set(r.days);
+          if (cb.checked) set.add(d[0]); else set.delete(d[0]);
+          r.days = ALL_DAYS.filter(x => set.has(x));
+          markDirty();
+        });
+        lab.appendChild(cb);
+        lab.appendChild(el('span', null, d[1]));
+        list.appendChild(lab);
+      });
+      fs.appendChild(list);
+      card.appendChild(fs);
+
+      body.appendChild(card);
+    });
+  }
+
+  document.getElementById('add-rule').addEventListener('click', () => {
+    rules.push({name: '', mode: 'tor', start: '22:00', end: '07:00', days: ALL_DAYS.slice()});
+    markDirty(); render();
+    const cards = body.querySelectorAll('.sc-rule');
+    const last = cards[cards.length - 1];
+    if (last) { last.scrollIntoView({block: 'nearest'}); const inp = last.querySelector('input'); if (inp) inp.focus(); }
   });
-  const d = await r.json();
-  window.toast(d.ok ? 'Schedule saved' : 'Failed: ' + (d.error||''), d.ok ? 'ok' : 'danger');
-});
+
+  function problem() {
+    for (let i = 0; i < rules.length; i++) {
+      const r = rules[i], n = 'Rule ' + (i + 1);
+      if (!TIME_RE.test(r.start || '') || !TIME_RE.test(r.end || '')) return n + ': choose both a "From" and an "Until" time.';
+      if (r.start === r.end) return n + ': "From" and "Until" are the same time. Choose different times.';
+      if (!r.days || !r.days.length) return n + ': choose at least one day.';
+      if (!r.mode) return n + ': choose a privacy mode.';
+    }
+    return '';
+  }
+
+  saveBtn.addEventListener('click', async () => {
+    const p = problem();
+    if (p) { setStatus(p, 'text-danger'); window.toast(p, 'danger'); return; }
+    rules.forEach((r, i) => { if (!r.name || !String(r.name).trim()) r.name = 'Rule ' + (i + 1); });
+    saveBtn.disabled = true; saveBtn.textContent = 'Saving…';
+    try {
+      const r = await fetch('/api/schedule', {
+        method: 'POST', headers: {'Content-Type': 'application/json', ...csrfHeaders()},
+        body: JSON.stringify(rules)
+      });
+      let d = null;
+      try { d = await r.json(); } catch (e) {}
+      if (d && d.ok) {
+        dirty = false;
+        setStatus('Schedule saved.', 'text-ok');
+        window.toast('Schedule saved', 'ok');
+        render();
+      } else {
+        const msg = r.redirected ? 'You were signed out. Reload the page and sign in again.'
+          : 'The schedule could not be saved. Check that every rule has a mode and both times, then try again.';
+        setStatus(msg, 'text-danger');
+        window.toast('Schedule not saved', 'danger');
+      }
+    } catch (e) {
+      setStatus('Could not reach PrivacyPi. Make sure you are still connected to its WiFi, then try again.', 'text-danger');
+      window.toast('Schedule not saved', 'danger');
+    } finally {
+      saveBtn.disabled = false; saveBtn.textContent = 'Save schedule';
+    }
+  });
+
+  window.addEventListener('beforeunload', e => { if (dirty) { e.preventDefault(); e.returnValue = ''; } });
+
+  render();
+})();
 </script>
 {% endblock %}

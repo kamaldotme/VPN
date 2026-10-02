@@ -1,21 +1,27 @@
 {% extends "wizard/_base.html" %}
-{% block step %}Last step{% endblock %}
+{% block step_n %}{{ steps_total }}{% endblock %}
+{% block step %}Step {{ steps_total }} of {{ steps_total }} · last one{% endblock %}
 {% block wizard %}
-<h2>Ready to go</h2>
-<p class="sub">Check these, then finish.</p>
-<div class="card mb-4" style="padding:14px">
-  <div class="text-sm text-muted">Your WiFi</div>
-  <div style="font-weight:600">{{ ssid }}</div>
-  <div class="text-sm text-muted mt-3">Privacy</div>
-  <div style="font-weight:600">{{ mode.icon }} {{ mode.label }}</div>
+<h1>Check and finish</h1>
+<p class="sub">Here's what you chose. If it looks right, press Finish setup.</p>
+<div class="panel">
+  <dl class="review">
+    <dt>Your WiFi name</dt>
+    <dd>{{ ssid }}</dd>
+    <dt>Privacy level</dt>
+    <dd><span aria-hidden="true">{{ mode.icon }}</span> {{ mode.label }}</dd>
+  </dl>
 </div>
 <p class="text-sm" style="color:var(--text-1)">
-  When you press <strong>Finish</strong>, PrivacyPi restarts. The setup network disappears and
+  When you press <strong>Finish setup</strong>, PrivacyPi restarts. The setup network disappears and
   <strong>{{ ssid }}</strong> appears about a minute later. Join it with the WiFi password you just chose.
 </p>
 <form method="post" class="mt-4">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-  <button class="btn btn-primary" style="width:100%">Finish</button>
+  <div class="wizard-actions">
+    <button class="btn btn-primary btn-block btn-lg" type="submit">Finish setup</button>
+    <a class="back-link" href="{{ url_for('wizard.mode') }}">← Change privacy level</a>
+    <a class="back-link" href="{{ url_for('wizard.wifi') }}">← Change WiFi name or password</a>
+  </div>
 </form>
-<p class="text-xs mt-3" style="text-align:center"><a href="{{ url_for('wizard.wifi') }}" class="text-muted">← Change WiFi name or password</a></p>
 {% endblock %}

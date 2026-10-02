@@ -10,8 +10,8 @@
   --border-strong: rgba(255, 255, 255, 0.16);
   --text-0: #f4f6fb;
   --text-1: #b8bfd0;
-  --text-2: #6b7080;
-  --text-dim: #4a4f5e;
+  --text-2: #969db0;            /* muted — 6:1+ on the dark surfaces */
+  --text-dim: #7d8497;          /* dimmest text that still passes AA (4.5:1) */
 
   --accent: #5eead4;            /* teal */
   --accent-glow: rgba(94, 234, 212, 0.18);
@@ -55,6 +55,8 @@ html, body {
   line-height: 1.55;
   letter-spacing: -0.005em;
   min-height: 100vh;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -88,9 +90,10 @@ html, body {
   position: fixed; top: 12px; left: 12px; z-index: 70;
   background: var(--bg-1); border: 1px solid var(--border);
   border-radius: 8px;
-  width: 40px; height: 40px;
+  width: 44px; height: 44px;
   align-items: center; justify-content: center;
   cursor: pointer; font-size: 18px;
+  color: var(--text-0); font-family: inherit; padding: 0;
 }
 .sidebar-overlay {
   display: none;
@@ -175,6 +178,7 @@ html, body {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: var(--space-3);
   margin-bottom: var(--space-5);
   padding-bottom: var(--space-4);
   border-bottom: 1px solid var(--border);
@@ -319,7 +323,7 @@ input:focus, select:focus, textarea:focus {
 .field { margin-bottom: var(--space-3); }
 .field label {
   display: block;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 500;
   color: var(--text-1);
   margin-bottom: 6px;
@@ -454,14 +458,16 @@ tbody tr:last-child td { border-bottom: none; }
   padding: var(--space-6) var(--space-5);
   box-shadow: var(--shadow-lg);
 }
+.auth-card h1,
 .auth-card h2 {
   margin: 0 0 var(--space-1);
   font-size: 22px; font-weight: 600;
   letter-spacing: -0.02em;
 }
 .auth-card .sub {
-  color: var(--text-2);
-  font-size: 13px;
+  color: var(--text-1);
+  font-size: 14px;
+  margin-top: 0;
   margin-bottom: var(--space-5);
 }
 
@@ -677,6 +683,180 @@ select {
 .summary .chip .n { font-size: 20px; font-weight: 700; letter-spacing: -0.02em; }
 .summary .chip .l { font-size: 11.5px; color: var(--text-2); }
 
+/* ============================================================
+   v3 — accessibility, forms, auth + setup wizard
+   ============================================================ */
+
+/* Keyboard focus is always visible (mouse clicks stay clean). */
+a:focus-visible, button:focus-visible, .btn:focus-visible, .nav-item:focus-visible,
+summary:focus-visible, [tabindex]:focus-visible,
+input[type=checkbox]:focus-visible, input[type=radio]:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.sr-only {
+  position: absolute !important; width: 1px; height: 1px; margin: -1px; padding: 0;
+  overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; border: 0;
+}
+.skip-link {
+  position: fixed; left: 12px; top: -80px; z-index: 2000;
+  background: var(--accent); color: var(--bg-0); font-weight: 600;
+  padding: 10px 16px; border-radius: var(--radius-sm); text-decoration: none;
+}
+.skip-link:focus { top: 12px; }
+
+/* Checkboxes and radios must not inherit the full-width text-field look. */
+input[type=checkbox], input[type=radio] {
+  width: auto; padding: 0; flex: none;
+  accent-color: var(--accent);
+}
+input::placeholder, textarea::placeholder { color: var(--text-2); opacity: 1; }
+input:disabled, select:disabled, textarea:disabled { opacity: .6; cursor: not-allowed; }
+/* Keep browser autofill readable on the dark theme. */
+input:-webkit-autofill, input:-webkit-autofill:focus {
+  -webkit-text-fill-color: var(--text-0);
+  box-shadow: 0 0 0 1000px var(--bg-2) inset;
+  caret-color: var(--text-0);
+}
+
+/* Buttons: full-width variant, disabled and "working" states. */
+.btn { justify-content: center; }
+.btn-block { width: 100%; }
+.btn-lg { padding: 12px 18px; font-size: 15px; min-height: 48px; }
+.btn:disabled, .btn[aria-disabled=true] { opacity: .55; cursor: not-allowed; box-shadow: none; }
+.btn[aria-busy=true] { cursor: progress; }
+.btn[aria-busy=true]::before {
+  content: ''; width: 14px; height: 14px; flex: none; border-radius: 50%;
+  border: 2px solid currentColor; border-right-color: transparent;
+  animation: btn-spin .7s linear infinite;
+}
+@keyframes btn-spin { to { transform: rotate(360deg); } }
+
+/* Show / hide password (added to every password field by base.html). */
+.pw-wrap { position: relative; display: block; min-width: 0; }
+.pw-wrap > input { padding-right: 64px; }
+.pw-toggle {
+  position: absolute; top: 1px; right: 1px; bottom: 1px;
+  min-width: 56px; padding: 0 12px;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: transparent; border: 0; border-left: 1px solid var(--border);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  color: var(--accent); font: inherit; font-size: 12.5px; font-weight: 600;
+  cursor: pointer; -webkit-tap-highlight-color: transparent;
+}
+.pw-toggle:hover { background: var(--bg-3); }
+.pw-toggle:focus-visible { outline-offset: -2px; }
+
+/* Help and validation text under a field. */
+.field-hint { font-size: 12.5px; color: var(--text-2); margin: 6px 0 0; line-height: 1.45; }
+.field-msg { font-size: 12.5px; color: var(--text-2); margin: 6px 0 0; min-height: 1.45em; line-height: 1.45; }
+.field-msg.ok { color: var(--ok); }
+.field-msg.bad { color: var(--danger); }
+.field-msg.warn { color: var(--warn); }
+
+/* Checkbox / radio row with a comfortable tap target. */
+.check {
+  display: flex; align-items: center; gap: 10px;
+  min-height: 44px; margin-bottom: var(--space-3);
+  font-size: 14px; color: var(--text-1); cursor: pointer;
+}
+.check input { width: 18px; height: 18px; margin: 0; }
+
+/* Flash messages shown inline (same .toast look, but part of the page). */
+.toast.flash {
+  animation: none; max-width: none; box-shadow: none;
+  display: block; font-size: 14px; line-height: 1.45;
+}
+.toast.flash::first-letter { text-transform: uppercase; }
+.toast.flash.danger { background: var(--danger-bg); }
+.toast.flash.ok { background: rgba(74, 222, 128, 0.08); }
+
+/* Sidebar */
+.sidebar nav { display: block; }
+.nav-icon { flex: none; }
+.user-chip { flex: none; white-space: nowrap; }
+.topbar > div:first-child { min-width: 0; }
+.topbar h1 { overflow-wrap: anywhere; }
+.topbar .sub:empty { display: none; }
+
+/* Auth + wizard */
+.auth-shell { min-height: 100dvh; }
+.auth-card { font-size: 15px; }
+.auth-card a { color: var(--accent); }
+.auth-brand { border: none; padding: 0; margin-bottom: var(--space-5); }
+.auth-foot { text-align: center; font-size: 13px; color: var(--text-2); margin: var(--space-4) 0 0; }
+.back-link {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  min-height: 44px; padding: 0 12px; font-size: 14px;
+  color: var(--text-1) !important; text-decoration: none; border-radius: var(--radius-sm);
+}
+.back-link:hover { color: var(--text-0) !important; text-decoration: underline; }
+.wizard-actions { display: flex; flex-direction: column; align-items: center; gap: 4px; margin-top: var(--space-4); }
+
+.code-input {
+  text-align: center; font-size: 24px !important; letter-spacing: 8px;
+  font-family: 'JetBrains Mono', 'SF Mono', Menlo, monospace;
+  padding-left: 20px; /* balances the trailing letter-spacing so digits sit centred */
+}
+
+/* Wizard progress */
+.wizard-progress { margin: 0 0 var(--space-5); }
+.wizard-progress-label {
+  display: flex; justify-content: space-between; gap: 12px;
+  font-size: 12.5px; color: var(--text-2); margin: 0 0 8px;
+}
+.wizard-dots { display: flex; gap: 6px; list-style: none; margin: 0; padding: 0; }
+.wizard-dots li { flex: 1; height: 4px; border-radius: 2px; background: var(--bg-3); }
+.wizard-dots li.done { background: var(--accent); opacity: .55; }
+.wizard-dots li.current { background: var(--accent); box-shadow: 0 0 10px var(--accent-glow); }
+
+.wizard-list { margin: 0 0 var(--space-5); padding-left: 22px; color: var(--text-1); font-size: 14px; line-height: 1.5; }
+.wizard-list li { margin-bottom: 6px; }
+.wizard-list li::marker { color: var(--accent); font-weight: 600; }
+
+/* Panels inside the auth card (status, review, sub-forms) */
+.panel {
+  background: var(--bg-2); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 14px; margin-bottom: var(--space-4);
+}
+.panel-title, .auth-card .panel-title { font-weight: 600; font-size: 15px; margin: 0; letter-spacing: 0; }
+.step b { flex: none; }
+.review { margin: 0; }
+.review dt { font-size: 12.5px; color: var(--text-2); }
+.review dd { margin: 2px 0 12px; font-weight: 600; overflow-wrap: anywhere; }
+.review dd:last-child { margin-bottom: 0; }
+
+/* Selectable option cards (wizard privacy level) */
+.choice {
+  display: flex; gap: 12px; align-items: flex-start; cursor: pointer;
+  background: var(--bg-2); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 14px; margin-bottom: var(--space-3);
+  transition: border-color var(--t-fast), background var(--t-fast);
+}
+.choice:hover { border-color: var(--border-strong); }
+.choice input { width: 20px; height: 20px; margin: 2px 0 0; }
+.choice-title { display: block; font-weight: 600; color: var(--text-0); }
+.choice-desc { display: block; margin-top: 4px; font-size: 13px; color: var(--text-1); line-height: 1.45; }
+.choice:has(input:checked) { border-color: var(--accent); background: rgba(94, 234, 212, 0.06); box-shadow: 0 0 0 1px var(--accent); }
+.choice:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.net-list { display: flex; flex-direction: column; gap: 6px; margin-top: var(--space-2); }
+.net-list .btn { justify-content: flex-start; width: 100%; text-align: left; overflow-wrap: anywhere; }
+
+.choice-group { border: 0; padding: 0; margin: 0; min-width: 0; }
+
+/* Very narrow screens: the top bar keeps only the "Log out" action. */
+@media (max-width: 480px) {
+  .user-chip .user-name { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important; animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important; scroll-behavior: auto !important;
+  }
+}
+
 /* Phones: the sidebar is an off-canvas drawer. This block must come after the
    base .sidebar rule (sticky, 100vh) or that rule wins and the drawer keeps
    occupying a full screen of blank space above every page. */
@@ -688,4 +868,22 @@ select {
   }
   .sidebar.open { transform: translateX(0); }
   .topbar { padding-left: 52px; }
+
+  /* Touch-sized controls and phone layout. */
+  .main { min-width: 0; }
+  .card { overflow-x: auto; }   /* wide tables scroll inside their card, not the page */
+  /* 16px stops iOS Safari zooming the page when a field is focused. */
+  input, select, textarea { font-size: 16px; min-height: 44px; }
+  input[type=checkbox], input[type=radio] { min-height: 0; }
+  .btn, .btn-sm { min-height: 44px; }
+  .sidebar { width: min(280px, 84vw); padding-top: 64px; overscroll-behavior: contain; }
+  .nav-item { min-height: 44px; font-size: 15px; }
+  .nav-section { font-size: 11.5px; }
+  .topbar { padding-left: 60px; align-items: flex-start; min-height: 44px; }
+  .user-chip { padding: 0 14px; min-height: 44px; font-size: 13.5px; }
+  .user-chip a { display: inline-flex; align-items: center; min-height: 44px; }
+  .toast-stack { top: 12px; right: 12px; left: 12px; }
+  .toast-stack .toast { max-width: none; }
+  .auth-shell { padding: var(--space-4) var(--space-3); place-items: start center; }
+  .auth-card { padding: var(--space-5) var(--space-4); }
 }

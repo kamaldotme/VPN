@@ -1,73 +1,181 @@
 {% extends "base.html" %}
-{% block heading %}Routing Mode{% endblock %}
-{% block subheading %}Atomic kernel-level switching with kill-switch protection.{% endblock %}
+{% block heading %}Privacy mode{% endblock %}
+{% block subheading %}Choose how every device on your WiFi reaches the internet. Tap an option to switch.{% endblock %}
 {% block content %}
+<style>
+.pg-modes .btn { min-height: 44px; justify-content: center; }
+.pg-modes :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.pg-modes .muted { color: #9aa3b8; }
+.pg-modes .mode-grid { grid-template-columns: repeat(auto-fill, minmax(min(250px, 100%), 1fr)); }
+.pg-modes .mode-tile { padding: 16px; min-height: 44px; display: flex; flex-direction: column; gap: 4px; }
+.pg-modes .mode-tile:disabled { cursor: progress; opacity: .55; transform: none; }
+.pg-modes .mode-tile.busy { opacity: 1; border-color: var(--warn); }
+.pg-modes .mode-tile-head { display: flex; align-items: center; gap: 10px; }
+.pg-modes .mode-tile-icon { margin: 0; }
+.pg-modes .mode-tile-name { margin: 0; flex: 1; min-width: 0; }
+.pg-modes .mode-tile-desc { font-size: 13px; color: var(--text-1); line-height: 1.45; }
+.pg-modes .mode-tile-trade { font-size: 12.5px; color: #9aa3b8; line-height: 1.45; }
+.pg-modes .mode-tile .in-use { display: none; }
+.pg-modes .mode-tile.active .in-use { display: inline-flex; }
+.pg-modes .mode-tile.danger-tile.active { border-color: var(--danger); box-shadow: 0 0 0 1px var(--danger); background: var(--bg-1); }
+.pg-modes .mode-tile.danger-tile.active .mode-tile-name { color: var(--danger); }
+.pg-modes #mode-now { font-size: 15px; font-weight: 600; overflow-wrap: anywhere; }
+.pg-modes #mode-msg { overflow-wrap: anywhere; }
+.pg-modes pre { max-height: 200px; overflow: auto; margin: 8px 0 0; }
+.pg-modes summary { cursor: pointer; padding: 10px 0; min-height: 44px; }
+</style>
+
+{% set info = {
+  'direct': ('🌐', 'No VPN (direct)',
+     'Normal internet with ads and trackers blocked.',
+     'Fastest — but websites and your internet provider still see your real address.'),
+  'openvpn': ('🔐', 'VPN (OpenVPN)',
+     'Sends everything through the VPN you set up, hiding your address and activity from your internet provider.',
+     'Works with almost every VPN company. A little slower than no VPN.'),
+  'wireguard': ('⚡', 'VPN (WireGuard)',
+     'Same protection as OpenVPN, using a newer and usually faster connection type.',
+     'Needs a WireGuard file from your VPN company.'),
+  'tor': ('🧅', 'Tor',
+     'Strongest anonymity: traffic is passed through three volunteer computers around the world.',
+     'Much slower. Video, some apps and some websites will not work.'),
+  'proxy': ('🛰️', 'Proxy',
+     'Sends everything through a proxy server you added. Helps where VPNs are blocked.',
+     'Only as private as whoever runs the proxy. Add and switch one on under Proxies first.'),
+  'killswitch': ('🛑', 'Block all internet',
+     'Cuts the internet for every device on your WiFi until you choose another option.',
+     'Nothing works online while this is on. This dashboard stays reachable.'),
+} %}
+
+<div class="pg-modes">
+
+<div class="card mb-4">
+  <p class="card-title muted">In use now</p>
+  <div id="mode-now" role="status" aria-live="polite">Loading…</div>
+  <p id="mode-msg" class="text-sm muted" style="margin:6px 0 0" role="status" aria-live="polite">
+    Switching takes a few seconds (up to a minute for a VPN) and briefly interrupts what your devices are doing.
+  </p>
+  <a id="mode-fix" class="btn btn-primary mt-3" href="/vpn" style="display:none">Set up a VPN</a>
+</div>
 
 <div class="mode-grid">
-  <button class="mode-tile" data-mode="direct">
-    <div class="mode-tile-icon">🌐</div>
-    <div class="mode-tile-name">Direct</div>
-    <div class="mode-tile-desc">Ad-blocking + encrypted DNS, no VPN</div>
+  {% for mode in allowed_modes %}
+  {% set i = info.get(mode, ('🔀', mode|title, 'Switch to ' ~ mode ~ ' mode.', '')) %}
+  <button type="button" class="mode-tile {{ 'danger-tile' if mode == 'killswitch' }}" data-mode="{{ mode }}" data-name="{{ i[1] }}" aria-pressed="false">
+    <span class="mode-tile-head">
+      <span class="mode-tile-icon" aria-hidden="true">{{ i[0] }}</span>
+      <span class="mode-tile-name">{{ i[1] }}</span>
+      <span class="badge {{ 'danger' if mode == 'killswitch' else 'ok' }} in-use">In use</span>
+    </span>
+    <span class="mode-tile-desc">{{ i[2] }}</span>
+    {% if i[3] %}<span class="mode-tile-trade">{{ i[3] }}</span>{% endif %}
   </button>
-  <button class="mode-tile" data-mode="openvpn">
-    <div class="mode-tile-icon">🔐</div>
-    <div class="mode-tile-name">OpenVPN</div>
-    <div class="mode-tile-desc">Reconnect your saved VPN (set up under VPN providers)</div>
-  </button>
-  <button class="mode-tile" data-mode="wireguard">
-    <div class="mode-tile-icon">⚡</div>
-    <div class="mode-tile-name">WireGuard</div>
-    <div class="mode-tile-desc">Reconnect your saved WireGuard VPN</div>
-  </button>
-  <button class="mode-tile" data-mode="tor">
-    <div class="mode-tile-icon">🧅</div>
-    <div class="mode-tile-name">Tor</div>
-    <div class="mode-tile-desc">Maximum anonymity</div>
-  </button>
-  <button class="mode-tile" data-mode="proxy">
-    <div class="mode-tile-icon">🥷</div>
-    <div class="mode-tile-name">Proxy</div>
-    <div class="mode-tile-desc">Censorship bypass (SS/V2Ray/Trojan/Hysteria2)</div>
-  </button>
-  <button class="mode-tile" data-mode="killswitch">
-    <div class="mode-tile-icon">🛑</div>
-    <div class="mode-tile-name">Kill switch</div>
-    <div class="mode-tile-desc">Block all traffic</div>
-  </button>
+  {% endfor %}
 </div>
 
 <div class="card mt-4" id="result-card" style="display:none">
-  <p class="card-title">Result</p>
-  <pre id="result-pre" class="text-xs" style="margin:0;max-height:160px;overflow:auto"></pre>
+  <details>
+    <summary class="text-sm muted">Technical details (for support)</summary>
+    <pre id="result-pre" class="text-xs"></pre>
+  </details>
+</div>
+
 </div>
 
 <script>
+const tiles = Array.from(document.querySelectorAll('.mode-tile'));
+const nowEl = document.getElementById('mode-now');
+const msgEl = document.getElementById('mode-msg');
+const fixEl = document.getElementById('mode-fix');
+let switching = false;
+
+function nameOf(mode) {
+  const t = tiles.find(x => x.dataset.mode === mode);
+  return t ? t.dataset.name : (mode || 'Unknown');
+}
+function setMsg(text, kind) {
+  msgEl.textContent = text;
+  msgEl.className = 'text-sm ' + (kind === 'danger' ? 'text-danger' : kind === 'ok' ? 'text-ok' : 'muted');
+}
+function showFix(mode) {
+  const map = {openvpn: ['/vpn', 'Set up a VPN'], wireguard: ['/vpn', 'Set up a VPN'], proxy: ['/proxies', 'Set up a proxy']};
+  const f = map[mode];
+  fixEl.style.display = f ? '' : 'none';
+  if (f) { fixEl.href = f[0]; fixEl.textContent = f[1]; }
+}
+// The script output can be many lines; keep the last meaningful one for people.
+function plain(d, fallback) {
+  const m = d && [d.stderr, d.error].find(x => typeof x === 'string' && x.trim());
+  if (!m) return fallback;
+  const lines = m.trim().split('\n').map(s => s.trim()).filter(Boolean);
+  return lines[lines.length - 1].slice(0, 300);
+}
+
 async function fetchStatus() {
+  if (switching) return;
   try {
     const r = await fetch('/api/status');
     const d = await r.json();
-    document.querySelectorAll('.mode-tile').forEach(t => {
-      t.classList.toggle('active', t.dataset.mode === d.mode);
+    if (!r.ok || !d.mode) throw new Error('no status');
+    tiles.forEach(t => {
+      const on = t.dataset.mode === d.mode;
+      t.classList.toggle('active', on);
+      t.setAttribute('aria-pressed', on ? 'true' : 'false');
     });
-  } catch(e) {}
-}
-fetchStatus();
-
-document.querySelectorAll('.mode-tile').forEach(btn => {
-  btn.addEventListener('click', async () => {
-    btn.style.opacity = '0.6';
-    const r = await fetch(`/api/mode/${btn.dataset.mode}`, {method: 'POST', headers: csrfHeaders()});
-    const d = await r.json();
-    btn.style.opacity = '1';
-    if (d.ok) {
-      window.toast(`Switched to ${btn.dataset.mode}`, 'ok');
-      fetchStatus();
-    } else {
-      window.toast('Switch failed: ' + (d.stderr || d.error || 'unknown'), 'danger');
+    let text = nameOf(d.mode);
+    if ((d.mode === 'openvpn' && !d.tun0_up) || (d.mode === 'wireguard' && !d.wg0_up)) {
+      text += ' — reconnecting. Internet is paused for your devices until the VPN is back.';
     }
-    document.getElementById('result-card').style.display = 'block';
-    document.getElementById('result-pre').textContent = (d.stdout || '') + (d.stderr || '');
-  });
-});
+    nowEl.textContent = text;
+  } catch (e) {
+    nowEl.textContent = 'Could not check the current mode.';
+  }
+}
+
+tiles.forEach(btn => btn.addEventListener('click', async () => {
+  if (switching) return;
+  const mode = btn.dataset.mode, name = btn.dataset.name;
+  if (btn.classList.contains('active') && !confirm('“' + name + '” is already in use. Apply it again?')) return;
+  if (mode === 'killswitch' && !confirm('Block the internet for EVERY device on your WiFi?\n\nNothing will work online until you come back here and choose another option. This dashboard will still open.')) return;
+  if (mode === 'direct' && !confirm('Switch to normal internet without a VPN?\n\nAds stay blocked, but websites and your internet provider will see your real address.')) return;
+
+  switching = true;
+  fixEl.style.display = 'none';
+  tiles.forEach(t => { t.disabled = true; });
+  btn.classList.add('busy');
+  setMsg('Switching to ' + name + '… please wait, this can take up to a minute.', '');
+
+  let d = null, reached = true;
+  try {
+    const r = await fetch('/api/mode/' + encodeURIComponent(mode), {method: 'POST', headers: csrfHeaders()});
+    try { d = await r.json(); } catch (_) { d = {ok: false, stderr: r.redirected ? 'You were signed out. Reload this page and sign in again.' : 'PrivacyPi gave an unexpected answer (code ' + r.status + ').'}; }
+  } catch (e) {
+    reached = false;
+    d = {ok: false, stderr: 'Could not reach PrivacyPi. Make sure you are still on its WiFi, wait a few seconds, then reload this page to see which mode is in use.'};
+  }
+
+  switching = false;
+  tiles.forEach(t => { t.disabled = false; });
+  btn.classList.remove('busy');
+
+  if (d.ok) {
+    const done = mode === 'killswitch'
+      ? 'Done — the internet is now blocked for all devices. Choose another option to turn it back on.'
+      : 'Done — all devices now use ' + name + '.';
+    setMsg(done, 'ok');
+    window.toast('Switched to ' + name, 'ok');
+  } else {
+    const why = plain(d, 'Something went wrong and no reason was given.');
+    setMsg('Could not switch to ' + name + '. ' + why, 'danger');
+    window.toast('Could not switch to ' + name, 'danger');
+    if (reached) showFix(mode);
+  }
+  const raw = ((d.stdout || '') + '\n' + (d.stderr || d.error || '')).trim();
+  document.getElementById('result-card').style.display = raw ? 'block' : 'none';
+  document.getElementById('result-pre').textContent = raw;
+  fetchStatus();
+}));
+
+fetchStatus();
+setInterval(fetchStatus, 10000);
 </script>
 {% endblock %}

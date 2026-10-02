@@ -12,23 +12,25 @@ set -euo pipefail
 ACTION="${1:-stats}"
 CHAIN_IN="PRIVACYPI_MAC_IN"
 CHAIN_OUT="PRIVACYPI_MAC_OUT"
-LAN_BRIDGES=("br-vlan10")  # add others as needed
+source /opt/privacypi/scripts/lib/site.sh 2>/dev/null || true
+LAN_BRIDGES=("${LAN_BRIDGE:-br-vlan10}")
 
 init_chain() {
+  # Create the counting chains once (never flush them: that would zero the
+  # counters) and hook them in at the TOP of FORWARD — further down, the
+  # per-mode ACCEPT rules end the walk before a counter is reached.
   for c in "$CHAIN_IN" "$CHAIN_OUT"; do
-    iptables -N "$c" 2>/dev/null || true
-    iptables -F "$c"
+    if ! iptables -nL "$c" >/dev/null 2>&1; then
+      iptables -N "$c"
+      iptables -A "$c" -j RETURN
+    fi
   done
-  # Hook into FORWARD: incoming-from-LAN, outgoing-to-LAN
   for br in "${LAN_BRIDGES[@]}"; do
     iptables -C FORWARD -i "$br" -j "$CHAIN_IN" 2>/dev/null \
-      || iptables -A FORWARD -i "$br" -j "$CHAIN_IN"
+      || iptables -I FORWARD 1 -i "$br" -j "$CHAIN_IN"
     iptables -C FORWARD -o "$br" -j "$CHAIN_OUT" 2>/dev/null \
-      || iptables -A FORWARD -o "$br" -j "$CHAIN_OUT"
+      || iptables -I FORWARD 1 -o "$br" -j "$CHAIN_OUT"
   done
-  # Always RETURN at end
-  iptables -A "$CHAIN_IN" -j RETURN
-  iptables -A "$CHAIN_OUT" -j RETURN
 }
 
 add_mac() {
@@ -46,8 +48,8 @@ discover() {
   init_chain
   # Read arp neighbours from each bridge
   for br in "${LAN_BRIDGES[@]}"; do
-    ip neigh show dev "$br" 2>/dev/null | awk '/REACHABLE|STALE/{print tolower($5)}' \
-      | grep -E '^[0-9a-f:]{17}$' | sort -u | while read -r mac; do
+    { ip neigh show dev "$br" 2>/dev/null | awk '!/FAILED|INCOMPLETE/ {for(i=1;i<NF;i++) if($i=="lladdr") print tolower($(i+1))}' \
+      | grep -E '^[0-9a-f:]{17}$' || true; } | sort -u | while read -r mac; do
         add_mac "$mac" || true
       done
   done
@@ -57,9 +59,13 @@ stats() {
   # Emit JSON list with per-rule pkt+byte counters from CHAIN_IN
   iptables -L "$CHAIN_IN" -nvx 2>/dev/null | awk '
     BEGIN { print "["; first=1 }
-    /MAC [0-9a-f:]{17}/ {
-      pkts=$1; bytes=$2
-      for(i=1;i<=NF;i++) if($i=="MAC"){mac=$(i+1); break}
+    / MAC ?[0-9A-Fa-f][0-9A-Fa-f]:/ {
+      pkts=$1; bytes=$2; mac=""
+      for(i=1;i<=NF;i++) {
+        if($i=="MAC"){mac=tolower($(i+1)); break}
+        if($i ~ /^MAC[0-9A-Fa-f]/){mac=tolower(substr($i,4)); break}
+      }
+      if(mac=="") next
       if(!first) print ","
       printf "  {\"mac\":\"%s\",\"pkts\":%s,\"bytes\":%s}", mac, pkts, bytes
       first=0

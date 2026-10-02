@@ -1,100 +1,247 @@
 {% extends "base.html" %}
-{% block heading %}Privacy hardening{% endblock %}
-{% block subheading %}Containment toggles for DNS, NTP, AP, and captive-portal handling.{% endblock %}
+{% block heading %}Extra protection{% endblock %}
+{% block subheading %}Optional switches that close common privacy gaps. Turn on the ones you want.{% endblock %}
 {% block content %}
+<style>
+  .pv-page [hidden] { display: none !important; }
+  .pv-page .btn { min-height: 44px; }
+  .pv-page .btn:disabled { opacity: .6; cursor: progress; }
+  .pv-page .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .pv-page .text-muted { color: var(--text-1); }
+  .pv-head { display: flex; gap: 8px 12px; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; margin-bottom: var(--space-3); }
+  .pv-title { margin: 0; flex: 1 1 200px; padding-top: 4px; }
+  .pv-row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .pv-state { font-size: 13px; margin: 0 0 12px; overflow-wrap: anywhere; }
+  .pv-result { font-size: 13px; margin: 12px 0 0; min-height: 1.4em; overflow-wrap: anywhere; }
+  .pv-list { margin: 0 0 12px; padding: 0; list-style: none; font-size: 13px; }
+  .pv-list li { display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; border-top: 1px solid var(--border); }
+  .pv-list li:first-child { border-top: none; }
+  .pv-list .v { font-weight: 600; white-space: nowrap; }
+</style>
+
+<div class="pv-page">
 
 <div class="card mb-4">
-  <p class="card-title">🛡️ DNS containment</p>
-  <p class="text-sm text-muted mb-3">
-    Force every device on the LAN through AdGuard, no matter what resolver it hardcodes.
-    Redirects <code>:53</code> + <code>:853</code> at the firewall, blocks known DoH IPs
-    (Cloudflare, Google, Quad9, OpenDNS, AdGuard public, ControlD).
-  </p>
-  <p class="text-xs mb-3" style="font-family:'JetBrains Mono',monospace">
-    State: <span id="dnstrap-state">…</span>
-  </p>
-  <div class="flex gap-2">
-    <button class="btn btn-primary" data-trap="dns-trap" data-act="enable">Enable</button>
-    <button class="btn" data-trap="dns-trap" data-act="disable">Disable</button>
+  <div class="pv-head">
+    <p class="card-title pv-title">Make every device use PrivacyPi's ad-blocking</p>
+    <span class="badge" id="dnstrap-badge" role="status" aria-live="polite">Checking…</span>
   </div>
+  <p class="text-sm text-muted mb-3">
+    Some devices and apps (smart TVs, some phones and browsers) try to skip PrivacyPi's ad and tracker
+    blocker by using their own lookup service. Turn this on to send all of them through PrivacyPi's blocker anyway.
+    If an app stops working afterwards, turn it off again.
+  </p>
+  <div class="pv-row">
+    <button class="btn btn-primary" type="button" data-trap="dns-trap" data-act="enable">Turn on</button>
+    <button class="btn" type="button" data-trap="dns-trap" data-act="disable">Turn off</button>
+  </div>
+  <p class="pv-result" id="dns-trap-result" role="status" aria-live="polite"></p>
 </div>
 
 <div class="card mb-4">
-  <p class="card-title">⏱️ NTP containment</p>
-  <p class="text-sm text-muted mb-3">
-    Devices contacting <code>pool.ntp.org</code> leak their existence + activity pattern.
-    Run chrony locally and capture all <code>:123</code> traffic to it.
-  </p>
-  <p class="text-xs mb-3" style="font-family:'JetBrains Mono',monospace">
-    State: <span id="ntptrap-state">…</span>
-  </p>
-  <div class="flex gap-2">
-    <button class="btn btn-primary" data-trap="ntp-trap" data-act="enable">Enable</button>
-    <button class="btn" data-trap="ntp-trap" data-act="disable">Disable</button>
+  <div class="pv-head">
+    <p class="card-title pv-title">Keep clock checks private</p>
+    <span class="badge" id="ntptrap-badge" role="status" aria-live="polite">Checking…</span>
   </div>
+  <p class="text-sm text-muted mb-3">
+    Your devices regularly ask servers on the internet what time it is. Those requests reveal that the
+    device exists and when it is switched on. Turn this on and PrivacyPi answers the time itself, so the
+    requests never leave your home.
+  </p>
+  <div class="pv-row">
+    <button class="btn btn-primary" type="button" data-trap="ntp-trap" data-act="enable">Turn on</button>
+    <button class="btn" type="button" data-trap="ntp-trap" data-act="disable">Turn off</button>
+  </div>
+  <p class="pv-result" id="ntp-trap-result" role="status" aria-live="polite"></p>
 </div>
 
 <div class="card mb-4">
-  <p class="card-title">📡 AP hardening (WPA3 / MFP / AP-isolation)</p>
-  <p class="text-sm text-muted mb-3">
-    Apply the strongest WiFi config your radio supports.
-    Always-on: <b>AP isolation</b> (clients can't see each other).
-    If your dongle supports it: <b>WPA3-SAE transition mode</b> +
-    <b>802.11w Management Frame Protection</b> (anti-deauth).
-  </p>
-  <p class="text-xs mb-3" style="font-family:'JetBrains Mono',monospace">
-    State: <span id="apharden-state">…</span>
-  </p>
-  <div class="flex gap-2">
-    <button class="btn" data-trap="ap-harden" data-act="probe">Probe radio capability</button>
-    <button class="btn btn-primary" data-trap="ap-harden" data-act="apply">Apply hardening</button>
+  <div class="pv-head">
+    <p class="card-title pv-title">Strengthen the WiFi security</p>
   </div>
+  <p class="text-sm text-muted mb-3">
+    Switches PrivacyPi's WiFi to the strongest protection its WiFi hardware supports: devices on the WiFi
+    are kept apart from each other, and — if the hardware can do it — the newest WiFi security (WPA3) and
+    protection against being kicked off the WiFi by an attacker are turned on.
+  </p>
+  <ul class="pv-list" id="apharden-state" role="status" aria-live="polite">
+    <li><span class="text-muted">Checking the current settings…</span></li>
+  </ul>
+  <div class="pv-row">
+    <button class="btn btn-primary" type="button" data-trap="ap-harden" data-act="apply">Strengthen WiFi</button>
+    <button class="btn" type="button" data-trap="ap-harden" data-act="probe">Check what my WiFi hardware supports</button>
+  </div>
+  <p class="pv-result" id="ap-harden-result" role="status" aria-live="polite"></p>
 </div>
 
 <div class="card">
-  <p class="card-title">📶 Captive-portal handler</p>
-  <p class="text-sm text-muted mb-3">
-    When the Pi's upstream is a public hotspot (airport, coffee shop), kill-switch +
-    DNS containment will block the captive-portal login. Use bypass for 30 minutes
-    to authenticate, then it auto-restores.
-  </p>
-  <p class="text-xs mb-3" style="font-family:'JetBrains Mono',monospace">
-    State: <span id="captive-state">…</span>
-  </p>
-  <div class="flex gap-2">
-    <button class="btn" data-trap="captive-portal" data-act="check">Detect portal</button>
-    <button class="btn btn-primary" data-trap="captive-portal" data-act="bypass">Bypass 30 min</button>
-    <button class="btn" data-trap="captive-portal" data-act="restore">Restore now</button>
+  <div class="pv-head">
+    <p class="card-title pv-title">Sign in to hotel, café or airport WiFi</p>
+    <span class="badge" id="captive-badge" role="status" aria-live="polite">Checking…</span>
   </div>
+  <p class="text-sm text-muted mb-3">
+    Public WiFi often shows a sign-in page before it lets you online. PrivacyPi's protections block that page.
+    If PrivacyPi gets its internet from such a WiFi, pause the protections for 30 minutes, sign in, and they
+    switch back on by themselves.
+  </p>
+  <p class="pv-state" id="captive-state"></p>
+  <div class="pv-row">
+    <button class="btn btn-primary" type="button" data-trap="captive-portal" data-act="bypass">Pause protection for 30 minutes</button>
+    <button class="btn" type="button" data-trap="captive-portal" data-act="restore">Turn protection back on now</button>
+    <button class="btn" type="button" data-trap="captive-portal" data-act="check">Check for a sign-in page</button>
+  </div>
+  <p class="pv-result" id="captive-portal-result" role="status" aria-live="polite"></p>
+</div>
+
 </div>
 
 <script>
-async function loadState(api, slot) {
-  const r = await fetch('/api/' + api);
-  const d = await r.json();
-  document.getElementById(slot).textContent = JSON.stringify(d);
-}
-function refreshAll() {
-  loadState('dns-trap', 'dnstrap-state');
-  loadState('ntp-trap', 'ntptrap-state');
-  loadState('ap-harden', 'apharden-state');
-  loadState('captive-portal', 'captive-state');
-}
-document.querySelectorAll('button[data-trap]').forEach(b => b.addEventListener('click', async () => {
-  const api = b.getAttribute('data-trap');
-  const act = b.getAttribute('data-act');
-  b.disabled = true; b.textContent = '…';
-  const r = await fetch('/api/' + api + '/' + act, {method: 'POST', headers: csrfHeaders()});
-  const d = await r.json();
-  window.toast(d.ok !== false ? api + ': ' + act + ' ok' : (api + ' fail: ' + (d.error||'')),
-    d.ok !== false ? 'ok' : 'danger');
-  b.disabled = false; b.textContent = act === 'enable' ? 'Enable' :
-    act === 'disable' ? 'Disable' : act === 'apply' ? 'Apply hardening' :
-    act === 'probe' ? 'Probe radio capability' :
-    act === 'bypass' ? 'Bypass 30 min' : act === 'restore' ? 'Restore now' :
-    act === 'check' ? 'Detect portal' : act;
+(function () {
+  const $ = id => document.getElementById(id);
+  const NET_ERR = 'Could not reach PrivacyPi. Make sure you are still connected to its WiFi, then try again.';
+  const isOn = v => v === true || v === 1 || v === '1' || v === 'on' || v === 'true' || v === 'yes';
+
+  async function getJson(url, opts) {
+    let r;
+    try { r = await fetch(url, opts); } catch (e) { throw new Error(NET_ERR); }
+    let d = null;
+    try { d = await r.json(); } catch (e) {}
+    if (!d || typeof d !== 'object') throw new Error(r.redirected ? 'You were signed out. Reload the page and sign in again.' : 'PrivacyPi could not complete that. Please try again.');
+    return d;
+  }
+  function badge(id, text, kind) {
+    const b = $(id);
+    b.textContent = text;
+    b.className = 'badge ' + (kind || '');
+  }
+  function result(api, text, cls) {
+    const el = $(api + '-result');
+    el.textContent = text || '';
+    el.className = 'pv-result ' + (cls || '');
+  }
+  function li(label, value, cls) {
+    const row = document.createElement('li');
+    const a = document.createElement('span'); a.textContent = label;
+    const b = document.createElement('span'); b.className = 'v ' + (cls || ''); b.textContent = value;
+    row.appendChild(a); row.appendChild(b);
+    return row;
+  }
+
+  // ---- Current state of each switch ----
+  async function loadOnOff(api, badgeId) {
+    try {
+      const d = await getJson('/api/' + api);
+      if (!('trap' in d)) throw new Error('unknown');
+      const on = isOn(d.trap);
+      badge(badgeId, on ? 'On' : 'Off', on ? 'ok' : '');
+    } catch (e) { badge(badgeId, 'Status unknown', 'warn'); }
+  }
+  async function loadAp() {
+    const list = $('apharden-state');
+    try {
+      const d = await getJson('/api/ap-harden');
+      if (!('ap_isolate' in d) && !('key_mgmt' in d) && !('ieee80211w' in d)) throw new Error('unknown');
+      const iso = isOn(d.ap_isolate);
+      const wpa3 = /SAE/i.test(d.key_mgmt || '');
+      const mfp = d.ieee80211w === '1' || d.ieee80211w === '2' || d.ieee80211w === 1 || d.ieee80211w === 2;
+      list.replaceChildren(
+        li('Devices kept apart from each other', iso ? 'On' : 'Off', iso ? 'text-ok' : 'text-muted'),
+        li('Newest WiFi security (WPA3)', wpa3 ? 'On' : 'Off', wpa3 ? 'text-ok' : 'text-muted'),
+        li('Protection against being kicked off', mfp ? 'On' : 'Off', mfp ? 'text-ok' : 'text-muted')
+      );
+    } catch (e) {
+      const row = document.createElement('li');
+      const s = document.createElement('span'); s.className = 'text-muted'; s.textContent = 'The current WiFi settings could not be read right now.';
+      row.appendChild(s);
+      list.replaceChildren(row);
+    }
+  }
+  async function loadCaptive() {
+    const st = $('captive-state');
+    try {
+      const d = await getJson('/api/captive-portal');
+      if (!d.state) throw new Error('unknown');
+      if (String(d.state).indexOf('bypass') === 0) {
+        badge('captive-badge', 'Protection paused', 'warn');
+        const since = parseInt(String(d.state).split(':')[1], 10);
+        let left = '';
+        if (since) {
+          const mins = Math.max(0, Math.round((since + 1800 - Date.now() / 1000) / 60));
+          left = ' It switches back on by itself in about ' + mins + ' minute' + (mins === 1 ? '' : 's') + '.';
+        }
+        st.textContent = 'Protection is paused so you can sign in to the public WiFi.' + left;
+      } else {
+        badge('captive-badge', 'Protection on', 'ok');
+        st.textContent = d.portal_present === 'yes'
+          ? 'A sign-in page was detected on the internet connection. Pause protection to sign in.'
+          : 'No sign-in page detected. Nothing to do.';
+      }
+    } catch (e) {
+      badge('captive-badge', 'Status unknown', 'warn');
+      st.textContent = '';
+    }
+  }
+  function refreshAll() {
+    loadOnOff('dns-trap', 'dnstrap-badge');
+    loadOnOff('ntp-trap', 'ntptrap-badge');
+    loadAp();
+    loadCaptive();
+  }
+
+  // ---- Actions ----
+  const ACTIONS = {
+    'dns-trap/enable':  {busy: 'Turning on…',  ok: 'On. All devices now go through PrivacyPi\'s ad-blocker.'},
+    'dns-trap/disable': {busy: 'Turning off…', ok: 'Off. Devices can use their own lookup service again.',
+      confirm: 'Turn this off?\n\nDevices and apps will be able to skip PrivacyPi\'s ad and tracker blocking again.'},
+    'ntp-trap/enable':  {busy: 'Turning on…',  ok: 'On. PrivacyPi now answers clock checks itself.'},
+    'ntp-trap/disable': {busy: 'Turning off…', ok: 'Off. Devices ask the internet for the time again.',
+      confirm: 'Turn this off?\n\nYour devices will ask servers on the internet for the time again.'},
+    'ap-harden/apply':  {busy: 'Applying… WiFi may drop', ok: 'Done. The WiFi is now using the strongest settings its hardware supports.',
+      confirm: 'Strengthen the WiFi security now?\n\nThe WiFi restarts, so every device (including this one) is disconnected for a few seconds and then reconnects. Very old devices may have trouble reconnecting afterwards.'},
+    'ap-harden/probe':  {busy: 'Checking…'},
+    'captive-portal/bypass': {busy: 'Pausing…', ok: 'Protection is paused for 30 minutes. Sign in to the public WiFi now.',
+      confirm: 'Pause protection for 30 minutes?\n\nDuring this time your devices are NOT protected: no VPN or Tor, no kill switch and no forced ad-blocking. Protection switches back on by itself after 30 minutes.'},
+    'captive-portal/restore': {busy: 'Turning on…', ok: 'Protection is back on.'},
+    'captive-portal/check': {busy: 'Checking…'},
+  };
+
+  document.querySelectorAll('button[data-trap]').forEach(b => b.addEventListener('click', async () => {
+    const api = b.dataset.trap, act = b.dataset.act;
+    const cfg = ACTIONS[api + '/' + act] || {busy: 'Working…'};
+    if (cfg.confirm && !confirm(cfg.confirm)) return;
+    const orig = b.textContent;
+    b.disabled = true; b.textContent = cfg.busy;
+    result(api, '');
+    try {
+      const d = await getJson('/api/' + api + '/' + act, {method: 'POST', headers: csrfHeaders()});
+      if (d.ok === false || d.error) {
+        result(api, 'That did not work. Please try again in a minute.', 'text-danger');
+        window.toast('That did not work', 'danger');
+      } else if (api === 'ap-harden' && act === 'probe') {
+        const yes = v => v === true ? 'Yes' : 'No';
+        result(api, 'Your WiFi hardware supports — newest WiFi security (WPA3): ' + yes(d.wpa3_sae) +
+          ' · protection against being kicked off: ' + yes(d.mfp_802_11w) + '.');
+      } else if (api === 'captive-portal' && act === 'check') {
+        if (d.present === 'yes') result(api, 'Yes — this internet connection wants you to sign in first. Tap "Pause protection for 30 minutes", then open any website to see the sign-in page.', 'text-warn');
+        else result(api, 'No sign-in page found. The internet connection is open.', 'text-ok');
+      } else {
+        result(api, cfg.ok || 'Done.', 'text-ok');
+        window.toast('Done', 'ok');
+      }
+    } catch (e) {
+      if (api === 'ap-harden' && act === 'apply') {
+        result(api, 'The connection dropped — that is expected while the WiFi restarts. Reconnect to PrivacyPi\'s WiFi and reload this page to see the result.', '');
+      } else {
+        result(api, e.message, 'text-danger');
+        window.toast(e.message, 'danger');
+      }
+    } finally {
+      b.disabled = false; b.textContent = orig;
+    }
+    refreshAll();
+  }));
+
   refreshAll();
-}));
-refreshAll();
+})();
 </script>
 {% endblock %}

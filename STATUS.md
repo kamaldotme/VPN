@@ -16,6 +16,10 @@ back by itself after a reboot.
 - ❌ **Edimax (rtl8192cu) as access point freezes the whole Pi** when hostapd is restarted — hence
   the role policy: built-in radio is always the AP, USB adapters are the uplink.
 - ✅ NordVPN from the dashboard: connect, client exits in the chosen country, auto-reconnect after reboot.
+- ✅ Every dashboard page and read-only API answers on the device; DNS blocking levels, DNS/NTP traps,
+  diagnostics, speed test, WireGuard travel server (init, add/remove device), backup, audit check,
+  per-device traffic and the live DNS view were exercised on the Pi (several were broken on a fresh
+  install and are fixed: see the commit log).
 - ⚠️ Setup page did not pop up by itself on an Android phone (had to open http://10.10.10.1).
   Suspected cause fixed (WiFi now starts only after the captive portal is ready) — needs a re-test.
 - ✅ fixed: wizard Internet step "timeout" (wpa_cli cannot answer inside the dashboard sandbox).
@@ -38,7 +42,7 @@ back by itself after a reboot.
 ## Test on a real Pi 4 — checklist
 1. Flash `build/privacypi-2.6.0.img.xz` (Raspberry Pi Imager → Use custom; no customisation). Cable in, power on, wait ~2 min.
 2. `PrivacyPi-Setup` appears → join with `privacypi` → setup page pops up (else http://10.10.10.1).
-3. Finish the wizard → your WiFi appears ~15 s later → join it → a web page loads; an ad-heavy site shows no ads.
+3. Finish the wizard → PrivacyPi restarts → your WiFi appears about a minute later → join it → a web page loads; an ad-heavy site shows no ads.
 4. Dashboard http://10.10.10.1 → login `admin`.
 5. Routing → Tor → https://check.torproject.org says you are using Tor → back to Direct.
 6. VPN providers → NordVPN service credentials → Connect → public IP changes. Pull the Pi's cable for a minute: devices lose internet, then recover.

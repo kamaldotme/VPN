@@ -15,7 +15,7 @@ fire_alert() {
   [[ -z "$secret" ]] && return 0
   curl -sk --max-time 3 -X POST -H "X-Internal-Secret: $secret" \
     -d "message=$message" -d "level=warn" \
-    "https://${FLASK_INTERNAL}/api/alert/internal/$trigger" >/dev/null 2>&1 || true
+    "http://${FLASK_INTERNAL}/api/alert/internal/$trigger" >/dev/null 2>&1 || true
 }
 
 

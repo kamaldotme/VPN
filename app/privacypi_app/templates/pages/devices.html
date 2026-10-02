@@ -1,92 +1,189 @@
 {% extends "base.html" %}
-{% block heading %}Connected Devices{% endblock %}
-{% block subheading %}Everything on your PrivacyPi WiFi — with per-device routing. Refreshes every 10s.{% endblock %}
+{% block heading %}Devices{% endblock %}
+{% block subheading %}Everything that has joined your PrivacyPi WiFi. You can give a single device its own rule.{% endblock %}
 {% block content %}
+<style>
+.pg-dev .btn, .pg-dev select { min-height: 44px; }
+.pg-dev .btn { justify-content: center; }
+.pg-dev .btn:disabled { opacity: .55; cursor: not-allowed; }
+.pg-dev :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.pg-dev select { font-size: 16px; }
+.pg-dev .muted { color: #9aa3b8; }
+.pg-dev .grid-auto { grid-template-columns: repeat(auto-fill, minmax(min(300px, 100%), 1fr)); }
+.pg-dev .tile:hover { transform: none; }
+.pg-dev .tile-name { overflow-wrap: anywhere; }
+.pg-dev .tile-meta { color: #9aa3b8; overflow-wrap: anywhere; }
+.pg-dev .kv { flex-wrap: wrap; }
+.pg-dev .kv .k { color: #9aa3b8; }
+.pg-dev .kv .v { overflow-wrap: anywhere; text-align: right; }
+.pg-dev .dev-label { display: block; font-size: 13px; color: var(--text-1); margin: 14px 0 6px; font-weight: 500; }
+.pg-dev .dev-help { font-size: 12px; color: #9aa3b8; margin: 6px 0 0; min-height: 1.2em; }
+.pg-dev .summary .chip { flex: 1 1 90px; padding: 10px 12px; }
+.pg-dev .summary .chip .l { color: #9aa3b8; }
+.pg-dev .empty { grid-column: 1 / -1; text-align: center; padding: 32px 16px; }
+@media (max-width: 768px) { .pg-dev #dev-refresh { flex: 1 1 100%; } }
+</style>
+
+<div class="pg-dev">
 
 <div class="summary" id="dev-summary">
   <div class="chip"><div><div class="n" id="s-total">—</div><div class="l">Devices</div></div></div>
-  <div class="chip"><div><div class="n text-ok" id="s-active">—</div><div class="l">Active now</div></div></div>
-  <div class="chip"><div><div class="n text-muted" id="s-idle">—</div><div class="l">Idle</div></div></div>
-  <div style="flex:1"></div>
-  <button class="btn btn-sm" id="dev-refresh" style="align-self:center">↻ Refresh</button>
+  <div class="chip"><div><div class="n text-ok" id="s-active">—</div><div class="l">Online now</div></div></div>
+  <div class="chip"><div><div class="n" id="s-idle">—</div><div class="l">Idle or away</div></div></div>
+  <button type="button" class="btn" id="dev-refresh" style="align-self:center">↻ Refresh</button>
+</div>
+<p id="dev-msg" class="text-sm muted mb-3" role="status" aria-live="polite">Loading devices…</p>
+
+<div class="grid-auto" id="dev-grid" aria-busy="true">
+  <div class="tile"><div class="skel" style="height:60px"></div></div>
+  <div class="tile"><div class="skel" style="height:60px"></div></div>
+  <div class="tile"><div class="skel" style="height:60px"></div></div>
 </div>
 
-<div class="grid-auto" id="dev-grid">
-  <div class="tile"><div class="skel" style="height:60px"></div></div>
-  <div class="tile"><div class="skel" style="height:60px"></div></div>
-  <div class="tile"><div class="skel" style="height:60px"></div></div>
 </div>
 
 <script>
 const MODES = ['none', 'direct', 'tor', 'killswitch'];
-const MODE_LABEL = {none:'Follow router', direct:'Direct (no VPN)', tor:'Through Tor', killswitch:'Block'};
+const MODE_LABEL = {
+  none: 'Same as the rest of the WiFi (normal)',
+  direct: 'Skip the VPN — plain internet',
+  tor: 'Always use Tor (slow, most private)',
+  killswitch: 'Block this device from the internet'
+};
+const MODE_DONE = {
+  none: 'now follows the same rule as the rest of your WiFi',
+  direct: 'now skips the VPN and uses plain internet',
+  tor: 'now always uses Tor',
+  killswitch: 'is now blocked from the internet'
+};
+let changing = false, loadedOnce = false;
 
 function iconFor(c){
   const s = ((c.name||'') + ' ' + (c.vendor||'')).toLowerCase();
   if (/iphone|pixel|galaxy|phone|android|oneplus/.test(s)) return '📱';
   if (/macbook|laptop|thinkpad|surface|xps/.test(s)) return '💻';
-  if (/tv|roku|chromecast|firestick|bravia|samsung/.test(s)) return '📺';
+  if (/tv|roku|chromecast|firestick|bravia/.test(s)) return '📺';
   if (/ipad|tablet/.test(s)) return '📲';
   if (/echo|nest|hue|smart|iot|printer|camera/.test(s)) return '🏠';
-  if (/mac|imac|desktop|pc/.test(s)) return '🖥️';
+  if (/imac|desktop|\bpc\b|mac/.test(s)) return '🖥️';
   return '🔌';
 }
 function elx(t,a,x){const e=document.createElement(t);if(a)for(const k in a)e[k]=a[k];if(x!=null)e.textContent=x;return e;}
+function fmtBytes(n){ n=Number(n)||0; if(n>=1e9)return (n/1e9).toFixed(2)+' GB'; if(n>=1e6)return (n/1e6).toFixed(1)+' MB'; if(n>=1e3)return (n/1e3).toFixed(0)+' KB'; return n+' B'; }
+function kv(k, v){ const r = elx('div', {className:'kv'}); r.appendChild(elx('span',{className:'k'},k)); r.appendChild(elx('span',{className:'v'},v)); return r; }
+function setMsg(text, kind){
+  const m = document.getElementById('dev-msg');
+  m.textContent = text;
+  m.className = 'text-sm mb-3 ' + (kind === 'danger' ? 'text-danger' : 'muted');
+}
+function lastLine(s, fallback){
+  if (typeof s !== 'string' || !s.trim()) return fallback;
+  const lines = s.trim().split('\n').map(x => x.trim()).filter(Boolean);
+  return lines[lines.length - 1].slice(0, 300);
+}
 
-async function refresh(){
-  let d;
-  try { d = await (await fetch('/api/devices')).json(); }
-  catch(e){ return; }
-  const clients = d.clients || [];
+async function setDeviceMode(sel, name, help){
+  const mode = sel.value, prev = sel.dataset.current;
+  if (mode === 'killswitch' && !confirm('Block “' + name + '” from the internet?\n\nIt stays on your WiFi but nothing on it will work online until you change this back.')) { sel.value = prev; return; }
+  if (mode === 'direct' && !confirm('Let “' + name + '” skip the VPN?\n\nWebsites and your internet provider will see your real address for this device, even while the rest of your WiFi is protected.')) { sel.value = prev; return; }
+  changing = true; sel.disabled = true;
+  help.textContent = 'Saving…'; help.className = 'dev-help';
+  let j;
+  try {
+    const r = await fetch('/api/device/' + encodeURIComponent(sel.dataset.mac) + '/mode/' + encodeURIComponent(mode), {method:'POST', headers: csrfHeaders()});
+    try { j = await r.json(); } catch (_) { j = {ok:false, error: r.redirected ? 'You were signed out. Reload this page and sign in again.' : 'PrivacyPi gave an unexpected answer (code ' + r.status + ').'}; }
+  } catch (e) {
+    j = {ok:false, error:'Could not reach PrivacyPi. Make sure you are still on its WiFi, then try again.'};
+  }
+  changing = false; sel.disabled = false;
+  if (j.ok) {
+    sel.dataset.current = mode;
+    help.textContent = '✓ Saved.'; help.className = 'dev-help text-ok';
+    window.toast(name + ' ' + MODE_DONE[mode], 'ok');
+  } else {
+    sel.value = prev;
+    const why = lastLine(j.stderr || j.error, 'The rule could not be saved.');
+    help.textContent = '✗ ' + why; help.className = 'dev-help text-danger';
+    window.toast('Could not change the rule for ' + name, 'danger');
+  }
+}
+
+function renderTile(c, idx){
+  const st = String(c.arp_state || c.status || '').toUpperCase();
+  const online = st === 'REACHABLE' || st === 'ACTIVE' || st === 'DELAY' || st === 'PROBE';
+  const idle = st === 'STALE';
+  const name = (c.name && c.name !== 'unknown' && c.name !== '*') ? c.name : 'Unnamed device';
+  const vendor = (c.vendor && c.vendor !== 'unknown') ? c.vendor : 'Maker unknown';
+
+  const tile = elx('div', {className:'tile'});
+  const head = elx('div', {className:'tile-head'});
+  const ico = elx('div', {className:'avatar glyph'}, iconFor(c)); ico.setAttribute('aria-hidden', 'true');
+  head.appendChild(ico);
+  const t = elx('div', {style:'flex:1;min-width:0'});
+  t.appendChild(elx('div', {className:'tile-name'}, name));
+  t.appendChild(elx('div', {className:'tile-meta'}, vendor));
+  head.appendChild(t);
+  head.appendChild(elx('span', {className:'badge ' + (online ? 'ok' : '')}, online ? 'Online' : (idle ? 'Idle' : 'Away')));
+  tile.appendChild(head);
+
+  tile.appendChild(kv('Address on your WiFi', c.ip || '—'));
+  tile.appendChild(kv('Hardware ID (MAC)', c.mac || '—'));
+  if (c.bytes != null) tile.appendChild(kv('Data used', fmtBytes(c.bytes)));
+
+  if (c.mac) {
+    const id = 'dev-mode-' + idx;
+    const lab = elx('label', {className:'dev-label', htmlFor:id}, 'Internet rule for this device');
+    const sel = elx('select', {className:'dev-mode', id:id});
+    sel.dataset.mac = c.mac;
+    const cur = MODES.includes(c.route_override) ? c.route_override : 'none';
+    sel.dataset.current = cur;
+    for (const m of MODES){ const o = elx('option', {value:m}, MODE_LABEL[m]); if (cur === m) o.selected = true; sel.appendChild(o); }
+    const help = elx('p', {className:'dev-help'});
+    help.setAttribute('role', 'status');
+    sel.addEventListener('change', () => setDeviceMode(sel, name, help));
+    tile.append(lab, sel, help);
+  }
+  return {tile, online};
+}
+
+async function refresh(manual){
+  // Don't redraw underneath someone who is in the middle of choosing a rule.
   const grid = document.getElementById('dev-grid');
-  let active = 0, idle = 0;
-  grid.replaceChildren();
-  if (!clients.length){
-    grid.innerHTML = '<div class="tile text-muted text-sm" style="grid-column:1/-1;text-align:center;padding:40px">No devices are connected to the PrivacyPi WiFi yet.</div>';
+  if (!manual && (changing || (document.activeElement && document.activeElement.classList.contains('dev-mode')))) return;
+  const btn = document.getElementById('dev-refresh');
+  if (manual) { btn.disabled = true; btn.textContent = 'Refreshing…'; }
+  let d = null, failed = '';
+  try {
+    const r = await fetch('/api/devices');
+    try { d = await r.json(); } catch (_) { d = null; }
+    if (!d) failed = r.redirected ? 'You were signed out. Reload this page and sign in again.' : 'PrivacyPi gave an unexpected answer.';
+    else if (!r.ok) failed = lastLine(d.error, 'The device list is not available right now.');
+  } catch (e) {
+    failed = 'Could not reach PrivacyPi. Make sure you are still on its WiFi.';
   }
-  for (const c of clients){
-    const st = (c.arp_state || c.status || '').toUpperCase();
-    const isActive = st === 'REACHABLE' || st === 'ACTIVE' || st === '';
-    isActive ? active++ : idle++;
-    const stateCls = st === 'REACHABLE' || st === 'ACTIVE' ? 'ok' : (st === 'STALE' ? 'warn' : '');
-    const stateTxt = isActive ? 'active' : (st === 'STALE' ? 'idle' : st.toLowerCase() || 'idle');
-    const name = (c.name && c.name !== 'unknown') ? c.name : '(unnamed device)';
-
-    const tile = elx('div', {className:'tile'});
-    const head = elx('div', {className:'tile-head'});
-    head.appendChild(elx('div', {className:'avatar glyph'}, iconFor(c)));
-    const t = elx('div', {style:'flex:1;min-width:0'});
-    t.appendChild(elx('div', {className:'tile-name', style:'overflow:hidden;text-overflow:ellipsis;white-space:nowrap'}, name));
-    t.appendChild(elx('div', {className:'tile-meta'}, c.vendor || 'Unknown vendor'));
-    head.appendChild(t);
-    head.appendChild(elx('span', {className:'badge ' + stateCls}, stateTxt));
-    tile.appendChild(head);
-
-    const kv1 = elx('div', {className:'kv'}); kv1.appendChild(elx('span',{className:'k'},'IP address')); kv1.appendChild(elx('span',{className:'v'}, c.ip||'—')); tile.appendChild(kv1);
-    const kv2 = elx('div', {className:'kv'}); kv2.appendChild(elx('span',{className:'k'},'MAC')); kv2.appendChild(elx('span',{className:'v'}, c.mac||'—')); tile.appendChild(kv2);
-    if (c.bytes != null){
-      const kv3 = elx('div', {className:'kv'}); kv3.appendChild(elx('span',{className:'k'},'Traffic')); kv3.appendChild(elx('span',{className:'v'}, fmtBytes(c.bytes))); tile.appendChild(kv3);
-    }
-
-    const ctl = elx('div', {style:'margin-top:14px'});
-    ctl.appendChild(elx('div', {className:'chain-sub', style:'margin-bottom:6px'}, 'Routing for this device'));
-    const sel = elx('select', {className:'dev-mode'}); sel.dataset.mac = c.mac;
-    for (const m of MODES){ const o = elx('option', {value:m}, MODE_LABEL[m]); if ((c.route_override||'none')===m) o.selected = true; sel.appendChild(o); }
-    sel.addEventListener('change', async e => {
-      const r = await fetch(`/api/device/${e.target.dataset.mac}/mode/${e.target.value}`, {method:'POST', headers: csrfHeaders()});
-      const j = await r.json();
-      window.toast(j.ok ? `${name} → ${MODE_LABEL[e.target.value]}` : 'Failed: '+(j.stderr||j.error), j.ok?'ok':'danger');
-    });
-    ctl.appendChild(sel); tile.appendChild(ctl);
-    grid.appendChild(tile);
+  if (manual) { btn.disabled = false; btn.textContent = '↻ Refresh'; }
+  grid.setAttribute('aria-busy', 'false');
+  if (failed) {
+    setMsg('Could not load your devices. ' + failed, 'danger');
+    if (!loadedOnce) grid.replaceChildren(elx('div', {className:'tile empty muted text-sm'}, 'The device list could not be loaded. Press Refresh to try again.'));
+    return;
   }
+  if (changing) return;
+  loadedOnce = true;
+  const clients = d.clients || [];
+  let active = 0;
+  const tiles = clients.map((c, i) => { const r = renderTile(c, i); if (r.online) active++; return r.tile; });
+  if (!clients.length) {
+    tiles.push(elx('div', {className:'tile empty muted text-sm'}, 'No devices yet — join your PrivacyPi WiFi from a phone or laptop and it will appear here.'));
+  }
+  grid.replaceChildren(...tiles);
   document.getElementById('s-total').textContent = clients.length;
   document.getElementById('s-active').textContent = active;
-  document.getElementById('s-idle').textContent = idle;
+  document.getElementById('s-idle').textContent = clients.length - active;
+  setMsg('This list updates by itself every 10 seconds. “Away” devices joined earlier but are not answering right now.', '');
 }
-function fmtBytes(n){ n=Number(n); if(n>=1e9)return (n/1e9).toFixed(2)+' GB'; if(n>=1e6)return (n/1e6).toFixed(1)+' MB'; if(n>=1e3)return (n/1e3).toFixed(0)+' KB'; return (n||0)+' B'; }
-document.getElementById('dev-refresh').addEventListener('click', refresh);
-refresh();
-setInterval(refresh, 10000);
+document.getElementById('dev-refresh').addEventListener('click', () => refresh(true));
+refresh(false);
+setInterval(() => refresh(false), 10000);
 </script>
 {% endblock %}

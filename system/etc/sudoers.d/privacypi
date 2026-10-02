@@ -1,6 +1,7 @@
 privacypi ALL=(root) NOPASSWD: /opt/privacypi/scripts/route-mode.sh, \
                                 /opt/privacypi/scripts/wan-config.sh, \
                                 /opt/privacypi/scripts/ap-config.sh, \
+                                /opt/privacypi/scripts/dns-profile.sh, \
                                 /opt/privacypi/scripts/setup-finish.sh, \
                                 /opt/privacypi/scripts/set-time.sh, \
                                 /opt/privacypi/scripts/extras.sh, \

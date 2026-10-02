@@ -1,14 +1,18 @@
 {% extends "base.html" %}
-{% block title %}Two-factor · PrivacyPi{% endblock %}
+{% block title %}Enter your code · PrivacyPi{% endblock %}
 {% block content %}
-<h2>Two-factor code</h2>
-<div class="sub">Enter the 6-digit code from your authenticator app.</div>
+<h1>Enter your code</h1>
+<p class="sub">Open your authenticator app and type the 6-digit code it shows for PrivacyPi.</p>
 <form method="post">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
   <div class="field">
-    <input name="code" autocomplete="one-time-code" required maxlength="6" inputmode="numeric"
-           style="text-align:center;font-size:24px;letter-spacing:8px;font-family:'JetBrains Mono',monospace">
+    <label for="totp-code">6-digit code</label>
+    <input id="totp-code" class="code-input" name="code" autocomplete="one-time-code" required autofocus
+           maxlength="6" minlength="6" inputmode="numeric" pattern="[0-9]{6}" placeholder="••••••"
+           title="The 6 digits shown in your authenticator app" aria-describedby="totp-hint">
+    <p class="field-hint" id="totp-hint">The code changes every 30 seconds — use the newest one.</p>
   </div>
-  <button class="btn btn-primary" type="submit" style="width:100%">Verify →</button>
+  <button class="btn btn-primary btn-block btn-lg" type="submit">Verify</button>
 </form>
+<p class="auth-foot"><a class="back-link" href="{{ url_for('auth.login') }}">← Back to sign in</a></p>
 {% endblock %}

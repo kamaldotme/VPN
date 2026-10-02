@@ -13,6 +13,15 @@ class Config:
     SESSION_COOKIE_HTTPONLY = True
     SESSION_COOKIE_SAMESITE = "Strict"
     PERMANENT_SESSION_LIFETIME = 60 * 60 * 4  # 4 hours
+    # "Keep me signed in": 30 days per device. Signed with the device's own
+    # secret key, HttpOnly; not marked Secure because the dashboard is normally
+    # used over plain HTTP on the PrivacyPi WiFi.
+    from datetime import timedelta as _td
+    REMEMBER_COOKIE_DURATION = _td(days=30)
+    REMEMBER_COOKIE_NAME = "pp_remember"
+    REMEMBER_COOKIE_HTTPONLY = True
+    REMEMBER_COOKIE_SAMESITE = "Lax"
+    REMEMBER_COOKIE_REFRESH_EACH_REQUEST = True
     WTF_CSRF_TIME_LIMIT = None  # session-bound
 
     # Allowed modes for /api/mode/<m>
@@ -61,6 +70,7 @@ class Config:
         "rotate-blocklists": "/opt/privacypi/scripts/rotate-blocklists.sh",
         "rotate-wg-psk": "/opt/privacypi/scripts/rotate-wg-psk.sh",
         "ap-config": "/opt/privacypi/scripts/ap-config.sh",
+        "dns-profile": "/opt/privacypi/scripts/dns-profile.sh",
         "setup-finish": "/opt/privacypi/scripts/setup-finish.sh",
         "set-time": "/opt/privacypi/scripts/set-time.sh",
         "extras": "/opt/privacypi/scripts/extras.sh",

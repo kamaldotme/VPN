@@ -19,7 +19,7 @@ sec() { printf '\n===== %s =====\n' "$1"; }
   sec "roles (site.conf)"
   grep -E '^(WAN_MODE|WAN_IFACE|ETH_IFACE|AP_IFACE|WIFI_WAN_IFACE|WIFI_COUNTRY|AP_CHANNEL|AP_SSID|ROLE_LOCK|ADMIN_ON_WAN)=' /etc/privacypi/site.conf 2>/dev/null
   sec "services"
-  for s in privacypi-net-roles privacypi-init systemd-networkd hostapd dnsmasq unbound AdGuardHome tor@default \
+  for s in privacypi-init systemd-networkd hostapd dnsmasq unbound AdGuardHome tor@default \
            privacypi-firewall privacypi-vpn-up privacypi-setup-mode privacypi-setup-dns caddy privacypi-flask \
            privacypi-wan-watch privacypi-openvpn chrony ssh NetworkManager wpa_supplicant; do
     printf '%-26s %-10s %s\n' "$s" "$(systemctl is-active "$s" 2>/dev/null)" "$(systemctl is-enabled "$s" 2>/dev/null)"
@@ -44,7 +44,7 @@ sec() { printf '\n===== %s =====\n' "$1"; }
   sec "time"; date -u; chronyc -n tracking 2>/dev/null | grep -E 'Leap status|System time|Reference ID'
   sec "firewall (filter)"; iptables -S 2>/dev/null | head -60
   sec "firewall (nat)"; iptables -t nat -S 2>/dev/null | head -40
-  for u in privacypi-net-roles privacypi-init hostapd dnsmasq AdGuardHome unbound caddy privacypi-flask privacypi-firewall privacypi-vpn-up privacypi-openvpn; do
+  for u in privacypi-init hostapd dnsmasq AdGuardHome unbound caddy privacypi-flask privacypi-firewall privacypi-vpn-up privacypi-openvpn; do
     sec "journal: $u (last 15)"; journalctl -b -u "$u" --no-pager -n 15 -o cat 2>/dev/null
   done
   sec "journal: errors this boot (last 40)"; journalctl -b -p err --no-pager -n 40 -o short-monotonic 2>/dev/null

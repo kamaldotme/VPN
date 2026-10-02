@@ -1,73 +1,139 @@
 {% extends "base.html" %}
 {% block heading %}Dashboard{% endblock %}
-{% block subheading %}Live status of your privacy router.{% endblock %}
+{% block subheading %}Are you protected, and is the internet working — at a glance.{% endblock %}
 {% block content %}
+<style>
+.pg-dash .btn { min-height: 44px; justify-content: center; }
+.pg-dash :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.pg-dash .muted { color: #9aa3b8; }
+.pg-dash .brk { overflow-wrap: anywhere; }
+.pg-dash .num { font-size: 28px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.15; margin: 2px 0; }
+.pg-dash .lbl { font-size: 12.5px; color: #9aa3b8; }
+.pg-dash .hint { font-size: 12px; color: #9aa3b8; margin-top: 4px; }
+.pg-dash .hero-why { font-size: 13.5px; color: var(--text-1); margin: 8px 0 0; max-width: 46ch; }
+.pg-dash .hero-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.pg-dash .pills { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+.pg-dash .pill.bad { background: var(--danger-bg); color: var(--danger); border-color: rgba(248,113,113,.3); }
+.pg-dash .pill.warn { background: rgba(251,191,36,.08); color: var(--warn); border-color: rgba(251,191,36,.3); }
+.pg-dash .shield.off { background: var(--bg-3); border: 1px solid var(--border-strong); box-shadow: none; }
+.pg-dash .shield.bad { background: var(--danger-bg); border: 1px solid rgba(248,113,113,.4); box-shadow: none; }
+.pg-dash .chain.stopped .chain-link { animation: none; background: var(--border-strong); }
+.pg-dash .chain-sub { color: #9aa3b8; }
+.pg-dash .hero-ip .v { overflow-wrap: anywhere; }
+.pg-dash .rank li { flex-direction: column; align-items: stretch; }
+.pg-dash .rank .row { display: flex; justify-content: space-between; gap: 12px; }
+.pg-dash .rank .dom { overflow-wrap: anywhere; min-width: 0; }
+.pg-dash .rank .ct { white-space: nowrap; color: #9aa3b8; }
+.pg-dash a.card-link { color: var(--accent); font-size: 12.5px; text-decoration: none; display: inline-block; padding: 8px 0; }
+.pg-dash a.card-link:hover { text-decoration: underline; }
+@media (max-width: 768px) {
+  .pg-dash .hero { padding: 18px 16px; }
+  .pg-dash .hero-status-title { font-size: 22px; }
+  .pg-dash .chain { flex-wrap: nowrap; align-items: flex-start; }
+  .pg-dash .chain-node { min-width: 0; flex: 1 1 0; }
+  .pg-dash .chain-link { margin: 22px 2px 0; flex: 0 1 18px; min-width: 8px; }
+  .pg-dash .chain-label, .pg-dash .chain-sub { overflow-wrap: anywhere; }
+  .pg-dash .span-all { grid-column: 1 / -1; }
+  .pg-dash .hero-actions .btn { flex: 1 1 140px; }
+}
+</style>
 
 {% set m = status.mode %}
-{% set protected = m in ('openvpn','wireguard','tor','proxy') %}
-{% set exit_name = {'openvpn':(status.provider or 'VPN'),'wireguard':(status.provider or 'WireGuard'),'tor':'Tor network','proxy':'Proxy'}.get(m, 'Your ISP') %}
+{% set known = m in ('direct','openvpn','wireguard','tor','proxy','killswitch') %}
+{% set is_vpn = m in ('openvpn','wireguard') %}
+{% set tunnel_up = (m == 'openvpn' and status.tun0_up) or (m == 'wireguard' and status.wg0_up) %}
+{% set reconnecting = is_vpn and not tunnel_up %}
+{% set protected = tunnel_up or m in ('tor','proxy') %}
+{% set blocked = m == 'killswitch' %}
+{% set online = status.public_ip and status.public_ip != 'unknown' %}
+{% set exit_name = {'openvpn':'Your VPN','wireguard':'Your VPN','tor':'Tor network','proxy':'Your proxy','killswitch':'Blocked'}.get(m, 'No VPN') %}
 
-<!-- ===== Hero: connection status + chain ===== -->
+<div class="pg-dash">
+
+<!-- ===== Hero: am I protected, how, and is the internet working ===== -->
 <div class="hero mb-4">
   <div class="hero-grid">
-    <div class="flex-center" style="gap:18px">
-      <div class="shield">{{ '🛡️' if protected else ('⛔' if m=='killswitch' else '🌐') }}</div>
-      <div>
-        <div class="hero-status-label">Connection</div>
-        <div class="hero-status-title">
-          {% if m=='killswitch' %}Blocked <span class="dim">· kill switch on</span>
-          {% elif protected %}Protected <span class="dim">· via {{ exit_name }}</span>
-          {% else %}Direct <span class="dim">· no VPN</span>{% endif %}
+    <div class="flex" style="gap:16px;align-items:flex-start">
+      <div class="shield {{ 'bad' if (blocked or reconnecting or not known) else ('' if protected else 'off') }}" aria-hidden="true">{{ '🛡️' if protected else ('⛔' if blocked else ('⏳' if reconnecting else ('❔' if not known else '🌐'))) }}</div>
+      <div style="min-width:0">
+        <div class="hero-status-label">Your protection</div>
+        <div class="hero-status-title" role="status">
+          {% if not known %}Status unavailable
+          {% elif blocked %}Internet blocked
+          {% elif reconnecting %}VPN reconnecting…
+          {% elif protected %}Protected <span class="dim">· <span id="via-name">{{ 'through your VPN' if is_vpn else ('through Tor' if m == 'tor' else 'through your proxy') }}</span></span>
+          {% else %}Not hidden <span class="dim">· no VPN</span>{% endif %}
         </div>
-        <div class="mt-3">
-          {% if protected %}<span class="pill">● Encrypted &amp; private</span>
-          {% elif m=='killswitch' %}<span class="pill" style="background:var(--danger-bg);color:var(--danger);border-color:rgba(248,113,113,.3)">● Internet paused</span>
-          {% else %}<span class="pill dim">● Unencrypted</span>{% endif %}
-          <span class="pill dim">{{ m }}</span>
+        <p class="hero-why">
+          {% if not known %}PrivacyPi could not read its own status. Reload this page; if it keeps happening, restart PrivacyPi from the System page.
+          {% elif blocked %}“Block all internet” is switched on, so no device on your WiFi can go online until you choose another mode.
+          {% elif reconnecting %}Internet is paused for your devices so nothing leaks while the VPN is down. It normally comes back by itself within a minute.
+          {% elif is_vpn %}Everything on your WiFi travels through your VPN. Your internet provider cannot see which sites you visit.
+          {% elif m == 'tor' %}Everything on your WiFi travels through the Tor network — very private, but slower than normal.
+          {% elif m == 'proxy' %}Everything on your WiFi travels through your proxy. Websites see the proxy's address instead of yours.
+          {% else %}Ads and trackers are being blocked, but websites and your internet provider can still see your real address.{% endif %}
+        </p>
+        <div class="pills">
+          {% if protected %}<span class="pill">● Location hidden</span>{% endif %}
+          {% if known and not blocked and not reconnecting %}
+          <span class="pill {{ '' if online else 'bad' }}" id="net-pill" role="status">{{ '● Internet working' if online else '● No internet connection' }}</span>
+          {% endif %}
+          {% if known and not blocked %}<span class="pill dim">● Ad blocking on</span>{% endif %}
+        </div>
+        <div class="hero-actions">
+          {% if not known %}<a class="btn btn-primary" href="/">Reload</a>
+          {% elif blocked %}<a class="btn btn-primary" href="/modes">Turn internet back on</a>
+          {% elif reconnecting %}<a class="btn btn-primary" href="/vpn">Check VPN</a><a class="btn" href="/modes">Change mode</a>
+          {% elif protected %}<a class="btn" href="/modes">Change protection</a>
+          {% else %}<a class="btn btn-primary" href="/vpn">Turn on a VPN</a><a class="btn" href="/modes">Other options</a>{% endif %}
         </div>
       </div>
     </div>
 
-    <div class="chain">
+    <div class="chain {{ 'stopped' if (blocked or reconnecting or not known) }}">
       <div class="chain-node">
-        <div class="chain-ico">📱</div>
+        <div class="chain-ico" aria-hidden="true">📱</div>
         <div class="chain-label">Your devices</div>
-        <div class="chain-sub" id="dev-count">—</div>
+        <div class="chain-sub" id="dev-count">&nbsp;</div>
       </div>
-      <div class="chain-link"></div>
+      <div class="chain-link" aria-hidden="true"></div>
       <div class="chain-node hl">
-        <div class="chain-ico">🛡️</div>
+        <div class="chain-ico" aria-hidden="true">🛡️</div>
         <div class="chain-label">PrivacyPi</div>
-        <div class="chain-sub">ad-block · DNSSEC</div>
+        <div class="chain-sub">blocks ads</div>
       </div>
-      <div class="chain-link"></div>
+      <div class="chain-link" aria-hidden="true"></div>
       <div class="chain-node {{ 'hl' if protected }}">
-        <div class="chain-ico">{{ '🔐' if protected else ('⛔' if m=='killswitch' else '🌍') }}</div>
-        <div class="chain-label">{{ exit_name }}</div>
-        <div class="chain-sub">{{ status.server or ('—' if not protected else 'tunnel') }}</div>
+        <div class="chain-ico" aria-hidden="true">{{ '🔐' if protected else ('⛔' if blocked else ('⏳' if reconnecting else '➖')) }}</div>
+        <div class="chain-label" id="exit-name">{{ exit_name }}</div>
+        <div class="chain-sub">{{ 'encrypted' if protected else ('reconnecting' if reconnecting else ('stopped here' if blocked else 'not hidden')) }}</div>
       </div>
-      <div class="chain-link"></div>
+      <div class="chain-link" aria-hidden="true"></div>
       <div class="chain-node">
-        <div class="chain-ico">🌐</div>
+        <div class="chain-ico" aria-hidden="true">🌐</div>
         <div class="chain-label">Internet</div>
-        <div class="chain-sub"><span class="pulse" style="color:var(--accent)">●</span> live</div>
+        <div class="chain-sub">{{ 'paused' if (blocked or reconnecting) else 'websites & apps' }}</div>
       </div>
     </div>
 
     <div class="hero-ip">
-      <div class="hero-status-label">Public IP</div>
-      <div class="v" id="ip-val">{{ status.public_ip or '—' }}</div>
-      <div class="chain-sub mt-3">Profile · {{ profile|replace("-"," ")|title }}</div>
+      <div class="hero-status-label">Address websites see</div>
+      <div class="v" id="ip-val">{{ status.public_ip if online else '—' }}</div>
+      <div class="hint" id="ip-hint">
+        {% if not online %}Could not check — <a href="/network" class="text-accent">check the internet connection</a>
+        {% elif protected %}Not your home's address — your real one is hidden
+        {% else %}This is your real home address (public IP){% endif %}
+      </div>
     </div>
   </div>
 </div>
 
 <!-- ===== Stat tiles ===== -->
 <div class="grid grid-4 mb-4">
-  <div class="card">
+  <div class="card span-all">
     <div class="stat">
-      <div class="donut-wrap">
-        <svg class="donut" viewBox="0 0 76 76">
+      <div class="donut-wrap" role="img" aria-label="Share of ads and trackers blocked">
+        <svg class="donut" viewBox="0 0 76 76" aria-hidden="true">
           <defs><linearGradient id="dg" x1="0" y1="0" x2="1" y2="1">
             <stop offset="0" stop-color="#5eead4"/><stop offset="1" stop-color="#7c8bff"/>
           </linearGradient></defs>
@@ -76,111 +142,203 @@
         </svg>
         <div class="donut-num" id="ins-rate">—</div>
       </div>
-      <div>
-        <div class="lbl">Ads &amp; trackers</div>
-        <div class="num" style="font-size:20px">blocked</div>
-        <div class="chain-sub">of all DNS lookups</div>
+      <div style="min-width:0">
+        <div class="lbl">Ads &amp; trackers blocked</div>
+        <div class="hint">Share of everything your devices tried to load that PrivacyPi stopped.</div>
       </div>
     </div>
   </div>
   <div class="card">
-    <div class="lbl" style="font-size:12px;color:var(--text-2)">Threats stopped</div>
+    <div class="lbl">Dangerous sites stopped</div>
     <div class="num" style="color:var(--danger)" id="ins-threats">—</div>
-    <div class="chain-sub">malware &amp; phishing · today</div>
+    <div class="hint">Malware and scam sites · last 24 hours</div>
   </div>
   <div class="card">
-    <div class="lbl" style="font-size:12px;color:var(--text-2)">Data saved</div>
+    <div class="lbl">Data saved</div>
     <div class="num" style="color:var(--info)" id="ins-bytes">—</div>
-    <div class="chain-sub" id="ins-time">— of load time</div>
+    <div class="hint" id="ins-time">Estimate, by not loading ads</div>
   </div>
-  <div class="card">
-    <div class="lbl" style="font-size:12px;color:var(--text-2)">Devices online</div>
+  <div class="card span-all">
+    <div class="lbl">Devices on your WiFi</div>
     <div class="num" id="dev-num">—</div>
-    <div class="flex gap-2 mt-3">
-      <span class="badge {% if status.tun0_up %}ok{% endif %}">tun0</span>
-      <span class="badge {% if status.wg0_up %}ok{% endif %}">wg0</span>
-    </div>
+    <a class="card-link" href="/devices">See all devices →</a>
   </div>
 </div>
 
-<!-- ===== Bandwidth + narrative ===== -->
+<!-- ===== Data use + summary ===== -->
 <div class="grid grid-2 mb-4">
   <div class="card">
-    <p class="section-title">Bandwidth · last 24h</p>
-    <div class="bars" id="bw-bars"><div class="skel" style="width:100%;height:100%"></div></div>
-    <div class="flex" style="gap:28px;margin-top:14px">
-      <div><div class="chain-sub">Downloaded</div><div class="num" style="font-size:20px;color:var(--info)" id="bw-rx">—</div></div>
-      <div><div class="chain-sub">Uploaded</div><div class="num" style="font-size:20px;color:var(--accent)" id="bw-tx">—</div></div>
+    <p class="section-title">Data used · last 24 hours</p>
+    <div class="bars" id="bw-bars" role="img" aria-label="Data used per hour over the last 24 hours"><div class="skel" style="width:100%;height:100%"></div></div>
+    <div class="flex" style="gap:28px;margin-top:14px;flex-wrap:wrap">
+      <div><div class="lbl">Downloaded</div><div class="num" style="font-size:20px;color:var(--info)" id="bw-rx">—</div></div>
+      <div><div class="lbl">Uploaded</div><div class="num" style="font-size:20px;color:var(--accent)" id="bw-tx">—</div></div>
     </div>
   </div>
   <div class="card" style="background:radial-gradient(700px 160px at 100% 0,rgba(124,139,255,.10),transparent 60%),linear-gradient(180deg,rgba(255,255,255,.04),transparent),var(--bg-1)">
     <p class="section-title" style="color:var(--accent)">Today on PrivacyPi</p>
-    <p class="num" style="font-size:22px;line-height:1.3;font-weight:600" id="ins-headline">loading…</p>
-    <p class="chain-sub" style="margin-top:10px">Updated continuously from your DNS activity.</p>
+    <p class="brk" style="font-size:20px;line-height:1.3;font-weight:600;margin:0" id="ins-headline" role="status">Loading…</p>
+    <p class="hint" style="margin-top:10px">Updates by itself every 30 seconds.</p>
   </div>
 </div>
 
-<!-- ===== Top blocked + active devices ===== -->
+<!-- ===== Top blocked + busiest devices ===== -->
 <div class="grid grid-2">
   <div class="card">
-    <p class="section-title">Most-blocked domains</p>
-    <ul class="rank" id="ins-top-blocked"><li class="chain-sub">loading…</li></ul>
+    <p class="section-title">Most-blocked ad &amp; tracker sites</p>
+    <ul class="rank" id="ins-top-blocked"><li class="muted text-sm">Loading…</li></ul>
   </div>
   <div class="card">
-    <p class="section-title">Most-active devices</p>
-    <ul class="rank" id="ins-top-clients"><li class="chain-sub">loading…</li></ul>
+    <p class="section-title">Busiest devices</p>
+    <ul class="rank" id="ins-top-clients"><li class="muted text-sm">Loading…</li></ul>
   </div>
+</div>
+
 </div>
 
 <script>
 const CIRC = 2 * Math.PI * 32;
-function fmtBytes(b){ if(b>1e9)return (b/1e9).toFixed(2)+' GB'; if(b>1e6)return (b/1e6).toFixed(1)+' MB'; if(b>1e3)return (b/1e3).toFixed(0)+' KB'; return (b||0)+' B'; }
+const RENDERED = {{ {'mode': m, 'tun': status.tun0_up|default(false), 'wg': status.wg0_up|default(false)}|tojson }};
+const IS_PROTECTED = {{ 'true' if protected else 'false' }};
+const VPN_NAMES = {nordvpn:'NordVPN', expressvpn:'ExpressVPN', mullvad:'Mullvad', protonvpn:'Proton VPN', ivpn:'IVPN',
+  surfshark:'Surfshark', airvpn:'AirVPN', 'custom-ovpn':'your VPN', 'custom-wg':'your VPN'};
+let DEV_NAMES = {};
 
-// keep the public IP live
-const es = new EventSource("/sse/status");
-es.onmessage = e => { try { const d = JSON.parse(e.data); if (d.public_ip) document.getElementById('ip-val').textContent = d.public_ip; } catch(_){} };
+function $(id){ return document.getElementById(id); }
+function fmtBytes(b){ b = Number(b) || 0; if(b>=1e9)return (b/1e9).toFixed(2)+' GB'; if(b>=1e6)return (b/1e6).toFixed(1)+' MB'; if(b>=1e3)return (b/1e3).toFixed(0)+' KB'; return b+' B'; }
+async function getJSON(url){
+  const r = await fetch(url);
+  if (!r.ok) throw new Error('http ' + r.status);
+  return r.json();
+}
+function emptyRow(text){ const li = document.createElement('li'); li.className = 'muted text-sm'; li.textContent = text; return li; }
+function rankRow(name, count, max){
+  const li = document.createElement('li');
+  const row = document.createElement('div'); row.className = 'row';
+  const a = document.createElement('span'); a.className = 'dom'; a.textContent = name;
+  const b = document.createElement('span'); b.className = 'ct'; b.textContent = count;
+  row.append(a, b);
+  const bg = document.createElement('div'); bg.className = 'barbg';
+  const bar = document.createElement('i'); bar.style.width = Math.max(2, Math.min(100, max)) + '%';
+  bg.appendChild(bar);
+  li.append(row, bg);
+  return li;
+}
+
+// Live status: keep the address + "internet working" fresh, and redraw the
+// page when the protection mode changes somewhere else.
+try {
+  const es = new EventSource('/sse/status');
+  es.onmessage = e => {
+    let d; try { d = JSON.parse(e.data); } catch (_) { return; }
+    if (!d || !d.mode) return;
+    if (d.mode !== RENDERED.mode || !!d.tun0_up !== !!RENDERED.tun || !!d.wg0_up !== !!RENDERED.wg) {
+      let last = 0;
+      try { last = Number(sessionStorage.getItem('pp-dash-reload')) || 0; } catch (_) {}
+      if (Date.now() - last > 20000) {
+        try { sessionStorage.setItem('pp-dash-reload', String(Date.now())); } catch (_) {}
+        location.reload();
+      }
+      return;
+    }
+    const online = d.public_ip && d.public_ip !== 'unknown';
+    $('ip-val').textContent = online ? d.public_ip : '—';
+    const pill = $('net-pill');
+    if (pill) {
+      pill.textContent = online ? '● Internet working' : '● No internet connection';
+      pill.classList.toggle('bad', !online);
+    }
+  };
+} catch (_) {}
+
+async function loadVpnName(){
+  if (RENDERED.mode !== 'openvpn' && RENDERED.mode !== 'wireguard') return;
+  try {
+    const d = await getJSON('/api/vpn/state');
+    const name = VPN_NAMES[d.provider];
+    if (!name) return;
+    if ($('exit-name')) $('exit-name').textContent = name === 'your VPN' ? 'Your VPN' : name;
+    if ($('via-name') && name !== 'your VPN') $('via-name').textContent = 'through ' + name;
+  } catch (_) {}
+}
+
+async function loadDevices(){
+  try {
+    const d = await getJSON('/api/devices');
+    const clients = d.clients || [];
+    const names = {};
+    clients.forEach(c => { if (c.ip && c.name && c.name !== 'unknown') names[c.ip] = c.name; });
+    DEV_NAMES = names;
+    const online = clients.filter(c => !['FAILED', 'UNKNOWN', 'INCOMPLETE'].includes(String(c.arp_state || '').toUpperCase())).length;
+    $('dev-num').textContent = online;
+    $('dev-count').textContent = online + ' online';
+  } catch (_) {
+    $('dev-num').textContent = '—';
+  }
+}
 
 async function loadInsights(){
   try {
-    const d = await (await fetch('/api/insights/dashboard')).json();
-    const rate = d.totals.block_rate_pct;
-    document.getElementById('ins-rate').textContent = rate + '%';
-    const off = CIRC * (1 - rate/100);
-    const v = document.getElementById('donut-val'); v.setAttribute('stroke-dasharray', CIRC.toFixed(1)); v.setAttribute('stroke-dashoffset', off.toFixed(1));
-    document.getElementById('ins-threats').textContent = d.totals.threats.toLocaleString();
-    document.getElementById('ins-bytes').textContent = d.narrative.saved_bandwidth;
-    document.getElementById('ins-time').textContent = d.narrative.saved_time + ' of load time';
-    document.getElementById('ins-headline').textContent = d.narrative.headline;
-    const maxB = Math.max(...d.top_blocked_domains.map(x=>x.count), 1);
-    document.getElementById('ins-top-blocked').replaceChildren(...d.top_blocked_domains.map(x=>{
-      const li=document.createElement('li'); li.style.flexDirection='column'; li.style.alignItems='stretch';
-      li.innerHTML = `<div style="display:flex;justify-content:space-between"><span class="dom">${x.name}</span><span class="ct">×${x.count.toLocaleString()}</span></div><div class="barbg"><i style="width:${100*x.count/maxB}%"></i></div>`;
-      return li; }));
-    const maxC = Math.max(...d.top_clients.map(x=>x.count), 1);
-    document.getElementById('ins-top-clients').replaceChildren(...d.top_clients.map(x=>{
-      const li=document.createElement('li'); li.style.flexDirection='column'; li.style.alignItems='stretch';
-      li.innerHTML = `<div style="display:flex;justify-content:space-between"><span class="dom">${x.ip}</span><span class="ct">${x.count.toLocaleString()} queries</span></div><div class="barbg"><i style="width:${100*x.count/maxC}%"></i></div>`;
-      return li; }));
-    if (d.devices_online != null) { document.getElementById('dev-num').textContent = d.devices_online; document.getElementById('dev-count').textContent = d.devices_online + ' connected'; }
-  } catch(e){ document.getElementById('ins-headline').textContent = 'Insights unavailable yet.'; }
+    const d = await getJSON('/api/insights/dashboard');
+    const t = d.totals || {}, n = d.narrative || {};
+    const rate = Number(t.block_rate_pct) || 0;
+    $('ins-rate').textContent = Math.round(rate) + '%';
+    const v = $('donut-val');
+    v.setAttribute('stroke-dasharray', CIRC.toFixed(1));
+    v.setAttribute('stroke-dashoffset', (CIRC * (1 - Math.min(100, rate) / 100)).toFixed(1));
+    $('ins-threats').textContent = (Number(t.threats) || 0).toLocaleString();
+    $('ins-bytes').textContent = n.saved_bandwidth || '—';
+    $('ins-time').textContent = n.saved_time ? 'Estimate · about ' + n.saved_time + ' less waiting for pages' : 'Estimate, by not loading ads';
+    const blocked = Number(t.blocked) || 0, total = Number(t.queries) || 0;
+    $('ins-headline').textContent = blocked
+      ? 'Blocked ' + blocked.toLocaleString() + ' ads and trackers out of ' + total.toLocaleString() + ' things your devices tried to load.'
+      : (total ? 'Nothing needed blocking so far today.' : 'All quiet — no activity to report yet.');
+
+    const tb = d.top_blocked_domains || [];
+    const maxB = Math.max(...tb.map(x => x.count || 0), 1);
+    $('ins-top-blocked').replaceChildren(...(tb.length
+      ? tb.map(x => rankRow(x.name, '×' + (x.count || 0).toLocaleString(), 100 * (x.count || 0) / maxB))
+      : [emptyRow('Nothing blocked yet. This fills in as your devices browse.')]));
+
+    const tc = d.top_clients || [];
+    const maxC = Math.max(...tc.map(x => x.count || 0), 1);
+    $('ins-top-clients').replaceChildren(...(tc.length
+      ? tc.map(x => rankRow(DEV_NAMES[x.ip] || x.ip, (x.count || 0).toLocaleString() + ' lookups', 100 * (x.count || 0) / maxC))
+      : [emptyRow('No device activity yet.')]));
+  } catch (e) {
+    $('ins-headline').textContent = 'Blocking statistics are not available right now. They appear a few minutes after PrivacyPi starts.';
+    $('ins-top-blocked').replaceChildren(emptyRow('Not available right now.'));
+    $('ins-top-clients').replaceChildren(emptyRow('Not available right now.'));
+  }
 }
 
 async function loadBandwidth(){
+  const wrap = $('bw-bars');
   try {
-    const d = await (await fetch('/api/bandwidth')).json();
-    const i = (d['br-vlan10']?.interfaces||[])[0];
-    if(!i){ throw 0; }
-    document.getElementById('bw-rx').textContent = fmtBytes(i.traffic.total.rx);
-    document.getElementById('bw-tx').textContent = fmtBytes(i.traffic.total.tx);
-    const hours = (i.traffic.hour||i.traffic.hours||[]).slice(-24);
-    const series = hours.map(h => (h.rx||0)+(h.tx||0));
+    const d = await getJSON('/api/bandwidth');
+    // The first entry is the WiFi network your devices use.
+    const key = Object.keys(d).find(k => d[k] && Array.isArray(d[k].interfaces) && d[k].interfaces.length);
+    const i = key ? d[key].interfaces[0] : null;
+    if (!i || !i.traffic) throw new Error('no data');
+    $('bw-rx').textContent = fmtBytes(i.traffic.total && i.traffic.total.tx);  // bridge tx = sent to devices = their downloads
+    $('bw-tx').textContent = fmtBytes(i.traffic.total && i.traffic.total.rx);
+    const hours = (i.traffic.hour || i.traffic.hours || []).slice(-24);
+    const series = hours.map(h => (h.rx || 0) + (h.tx || 0));
     const max = Math.max(...series, 1);
-    const wrap = document.getElementById('bw-bars'); wrap.replaceChildren();
-    (series.length?series:Array(24).fill(0)).forEach(v=>{ const b=document.createElement('div'); b.className='bar'; b.style.height=Math.max(3,100*v/max)+'%'; wrap.appendChild(b); });
-  } catch(e){ document.getElementById('bw-bars').innerHTML='<span class="chain-sub">collecting traffic data…</span>'; }
+    wrap.replaceChildren();
+    (series.length ? series : Array(24).fill(0)).forEach(v => {
+      const b = document.createElement('div'); b.className = 'bar'; b.style.height = Math.max(3, 100 * v / max) + '%'; wrap.appendChild(b);
+    });
+  } catch (e) {
+    const s = document.createElement('span'); s.className = 'muted text-sm';
+    s.textContent = 'Still collecting data — check back in about an hour.';
+    wrap.replaceChildren(s);
+  }
 }
 
-loadInsights(); loadBandwidth();
-setInterval(loadInsights, 30000);
+loadVpnName();
+loadBandwidth();
+loadDevices().then(loadInsights);
+setInterval(() => loadDevices().then(loadInsights), 30000);
 </script>
 {% endblock %}

@@ -1,23 +1,29 @@
 {% extends "wizard/_base.html" %}
-{% block step %}Step 4 of {{ steps_total - 1 }}{% endblock %}
+{% block step_n %}4{% endblock %}
+{% block step %}Step 4 of {{ steps_total }}{% endblock %}
 {% block wizard %}
-<h2>How private?</h2>
-<p class="sub">You can change this any time from the dashboard.</p>
+<h1 id="mode-title">How private do you want to be?</h1>
+<p class="sub">Pick one to start with. You can change it any time from the dashboard.</p>
 <form method="post">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-  {% for key, m in modes.items() %}
-  <label class="card mb-3" style="display:flex;gap:12px;align-items:flex-start;cursor:pointer;padding:14px">
-    <input type="radio" name="mode" value="{{ key }}" {% if key == current %}checked{% endif %} style="width:auto;margin-top:4px">
-    <span>
-      <strong>{{ m.icon }} {{ m.label }}</strong>
-      <span class="text-sm text-muted" style="display:block;margin-top:4px">{{ m.description }}</span>
-    </span>
-  </label>
-  {% endfor %}
-  <p class="text-xs text-muted mb-4">
-    <strong>Using NordVPN, ExpressVPN or another VPN?</strong> Finish setup first, then open
-    <em>VPN providers</em> in the dashboard and sign in there — it takes a minute.
+  <fieldset class="choice-group" aria-labelledby="mode-title">
+    {% for key, m in modes.items() %}
+    <label class="choice">
+      <input type="radio" name="mode" value="{{ key }}" {% if key == current %}checked{% endif %} required>
+      <span>
+        <span class="choice-title"><span aria-hidden="true">{{ m.icon }}</span> {{ m.label }}</span>
+        <span class="choice-desc">{{ m.description }}</span>
+      </span>
+    </label>
+    {% endfor %}
+  </fieldset>
+  <p class="field-hint mb-4">
+    <strong>Already pay for a VPN such as NordVPN or ExpressVPN?</strong> Finish setup first, then open
+    <em>VPN</em> in the dashboard menu and sign in there. It takes about a minute.
   </p>
-  <button class="btn btn-primary" style="width:100%">Continue →</button>
+  <div class="wizard-actions">
+    <button class="btn btn-primary btn-block btn-lg" type="submit">Continue</button>
+    <a class="back-link" href="{{ url_for('wizard.wifi') }}">← Back</a>
+  </div>
 </form>
 {% endblock %}

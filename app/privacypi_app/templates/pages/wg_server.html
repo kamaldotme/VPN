@@ -1,107 +1,247 @@
 {% extends "base.html" %}
-{% block heading %}WireGuard Server{% endblock %}
-{% block subheading %}Connect your phone or laptop to this Pi from anywhere in the world. Use your privacy stack while traveling.{% endblock %}
+{% block heading %}Use PrivacyPi away from home{% endblock %}
+{% block subheading %}Connect your phone or laptop back to PrivacyPi from anywhere, and keep the same protection on other networks.{% endblock %}
 {% block content %}
+<style>
+.pg-wg .btn, .pg-wg input { min-height: 44px; }
+.pg-wg .btn { justify-content: center; }
+.pg-wg .btn:disabled { opacity: .55; cursor: not-allowed; }
+.pg-wg :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.pg-wg input { font-size: 16px; }
+.pg-wg .muted { color: #9aa3b8; }
+.pg-wg .field label { font-size: 13px; }
+.pg-wg .how { margin: 0; padding-left: 20px; color: var(--text-1); font-size: 13.5px; }
+.pg-wg .how li { margin-bottom: 8px; }
+.pg-wg .note { font-size: 13px; margin: 10px 0 0; min-height: 1.2em; overflow-wrap: anywhere; }
+.pg-wg .add-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end; }
+.pg-wg .add-row .field { flex: 1 1 200px; margin: 0; }
+.pg-wg .peer-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.pg-wg .peer-list li { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg-2); }
+.pg-wg .peer-name { flex: 1 1 120px; font-weight: 600; overflow-wrap: anywhere; min-width: 0; }
+.pg-wg #qr-img { background: #fff; padding: 12px; border-radius: 12px; width: min(280px, 100%); height: auto; aspect-ratio: 1; }
+.pg-wg pre { text-align: left; max-height: 260px; overflow: auto; }
+.pg-wg summary { cursor: pointer; min-height: 44px; padding: 12px 0; }
+@media (max-width: 768px) {
+  .pg-wg .act, .pg-wg .add-row .btn { width: 100%; }
+  .pg-wg .peer-list .btn { flex: 1 1 110px; }
+}
+</style>
+
+<div class="pg-wg">
 
 <div class="card mb-4">
-  <div class="flex-between">
-    <div>
-      <p class="card-title">Server status</p>
-      <span class="badge {% if status.running %}ok{% endif %}" id="srv-status">{{ 'running' if status.running else 'stopped' }}</span>
-    </div>
-    <div class="flex gap-2">
-      {% if not status.running %}
-      <button class="btn" id="srv-init">Initialize</button>
-      <button class="btn btn-primary" id="srv-start">Start server</button>
-      {% endif %}
-    </div>
+  <p class="card-title muted">Remote access</p>
+  <div class="flex" style="flex-wrap:wrap;gap:10px;align-items:center">
+    <span class="badge {{ 'ok' if status.running }}" id="srv-status">{{ 'On' if status.running else 'Off' }}</span>
+    <span class="text-sm muted" style="flex:1 1 200px">
+      {% if status.running %}PrivacyPi is ready for your devices to connect from outside your home.
+      {% else %}Turn this on first, then add each device you want to use away from home.{% endif %}
+    </span>
   </div>
+  {% if not status.running %}
+  <button type="button" class="btn btn-primary mt-3 act" id="srv-start">Turn on remote access</button>
+  {% endif %}
+  <p id="srv-note" class="note muted" role="status" aria-live="polite"></p>
+  <button type="button" class="btn btn-danger mt-3 act" id="srv-init" style="display:none">Set up again from scratch</button>
 </div>
 
 <div class="card mb-4">
-  <p class="card-title">Add a peer</p>
-  <p class="text-sm text-muted mb-3">Each peer is one device (phone, laptop). Generate, scan QR with phone, done.</p>
-  <form id="peer-form">
-    <div class="flex gap-2">
-      <input name="name" placeholder="iphone, macbook, …" required style="flex:1">
-      <button class="btn btn-primary">Generate peer + QR</button>
+  <p class="section-title">How it works</p>
+  <ol class="how">
+    <li>Install the free <strong>WireGuard</strong> app on your phone or laptop (from the App Store, Google Play or wireguard.com).</li>
+    <li>Add the device below. PrivacyPi shows a QR code — in the WireGuard app choose “Add tunnel” → “Scan QR code”.</li>
+    <li>When you are away from home, switch the tunnel on in the app.</li>
+  </ol>
+  <p class="text-sm muted" style="margin:8px 0 0">
+    One-time step on your home router: it must pass incoming connections to PrivacyPi. Look for “port forwarding” in the router's
+    settings and forward the UDP port shown after “Endpoint” in the setup text (normally 51820) to PrivacyPi.
+  </p>
+</div>
+
+<div class="card mb-4">
+  <p class="card-title muted">Add a device</p>
+  <form id="peer-form" novalidate>
+    <div class="add-row">
+      <div class="field">
+        <label for="peer-name">Device name</label>
+        <input id="peer-name" name="name" placeholder="e.g. my-iphone" maxlength="32" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" aria-describedby="peer-help" required>
+      </div>
+      <button class="btn btn-primary" type="submit" id="peer-add">Add device</button>
     </div>
+    <div id="peer-help" class="text-xs muted" style="margin-top:6px">Letters, numbers, dashes and underscores only — no spaces.</div>
   </form>
-  <div id="qr-result" class="mt-4" style="display:none;text-align:center">
-    <img id="qr-img" style="background:white;padding:12px;border-radius:12px;width:280px;height:280px">
-    <p class="text-xs text-muted mt-3">Scan with the WireGuard app on your phone.</p>
+  <p id="peer-note" class="note muted" role="status" aria-live="polite"></p>
+
+  <div id="qr-result" class="mt-4" style="display:none;text-align:center" tabindex="-1">
+    <p class="text-sm" style="margin:0 0 10px"><strong id="qr-title"></strong></p>
+    <img id="qr-img" alt="QR code to scan with the WireGuard app" width="280" height="280">
+    <p class="text-sm muted mt-3">Scan this with the WireGuard app on that device. Keep it private — anyone who scans it can connect as this device.</p>
     <details>
-      <summary class="text-xs text-muted" style="cursor:pointer">Show config text</summary>
-      <pre id="qr-config" class="text-xs mt-2" style="text-align:left"></pre>
+      <summary class="text-sm muted">No camera? Show the setup text to copy instead</summary>
+      <pre id="qr-config" class="text-xs"></pre>
     </details>
   </div>
 </div>
 
 <div class="card">
-  <p class="card-title">Peers</p>
-  {% if peers %}
-  <table>
-    <thead><tr><th>Name</th><th></th></tr></thead>
-    <tbody>
-      {% for p in peers %}
-      <tr>
-        <td>{{ p }}</td>
-        <td>
-          <button class="btn btn-sm peer-qr" data-name="{{ p }}">Show QR</button>
-          <button class="btn btn-sm btn-danger peer-del" data-name="{{ p }}">Remove</button>
-        </td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-  {% else %}
-  <p class="text-muted text-sm">No peers yet.</p>
-  {% endif %}
+  <p class="card-title muted">Devices that can connect</p>
+  <ul class="peer-list" id="peer-list"></ul>
+  <p class="text-sm muted" id="peer-empty" style="margin:0;display:none">No devices yet — add your phone or laptop above.</p>
+</div>
+
 </div>
 
 <script>
-async function api(url, opts={}) {
-  const r = await fetch(url, {...opts, headers: {...csrfHeaders(), ...(opts.headers||{})}});
-  return r.json();
+const PEERS = {{ peers|tojson }};
+const RUNNING = {{ 'true' if status.running else 'false' }};
+
+async function ppFetch(url, opts) {
+  try {
+    const r = await fetch(url, opts);
+    let d = null;
+    try { d = await r.json(); } catch (_) {}
+    if (!d || typeof d !== 'object') {
+      d = {ok: false, error: r.redirected ? 'You were signed out. Reload this page and sign in again.'
+        : 'PrivacyPi gave an unexpected answer (code ' + r.status + '). Try again in a moment.'};
+    } else if (!r.ok && d.ok === undefined) { d.ok = false; }
+    return d;
+  } catch (e) {
+    return {ok: false, error: 'Could not reach PrivacyPi. Make sure you are still connected to it, then try again.'};
+  }
 }
-document.getElementById('srv-init')?.addEventListener('click', async () => {
-  const d = await api('/api/wg-server/init', {method:'POST'});
-  window.toast(d.ok ? 'Initialized' : 'Init failed', d.ok ? 'ok' : 'danger');
-  if (d.ok) location.reload();
+const FRIENDLY = {
+  'name required (alphanumeric/-/_)': 'Use only letters, numbers, dashes and underscores in the name — no spaces.',
+  'name required': 'Enter a name for the device.',
+  'bad name': 'Use only letters, numbers, dashes and underscores in the name — no spaces.',
+  'server not initialized': 'Turn on remote access first (top of this page), then add the device.'
+};
+function ppErr(d, fallback) {
+  const m = d && [d.error, d.stderr, d.err, d.out].find(x => typeof x === 'string' && x.trim());
+  if (!m) return fallback;
+  const lines = m.trim().split('\n').map(s => s.trim()).filter(Boolean);
+  const last = lines[lines.length - 1].slice(0, 300);
+  return FRIENDLY[last] || last;
+}
+function $(id) { return document.getElementById(id); }
+function note(id, text, kind) {
+  const el = $(id);
+  el.textContent = text;
+  el.className = 'note ' + (kind === 'ok' ? 'text-ok' : kind === 'danger' ? 'text-danger' : 'muted');
+}
+const post = url => ppFetch(url, {method: 'POST', headers: csrfHeaders()});
+
+// --- turn remote access on ------------------------------------------------------
+$('srv-start')?.addEventListener('click', async () => {
+  const btn = $('srv-start');
+  btn.disabled = true; btn.textContent = 'Turning on…';
+  note('srv-note', 'Starting — this takes a few seconds.', '');
+  let d = await post('/api/wg-server/start');
+  if (!d.ok && !PEERS.length) {
+    // First use: prepare it once, then start.
+    const i = await post('/api/wg-server/init');
+    d = i.ok ? await post('/api/wg-server/start') : i;
+  }
+  if (d.ok) {
+    note('srv-note', '✓ Remote access is on.', 'ok');
+    window.toast('Remote access is on', 'ok');
+    setTimeout(() => location.reload(), 1200);
+    return;
+  }
+  btn.disabled = false; btn.textContent = 'Turn on remote access';
+  note('srv-note', '✗ Could not turn on remote access. ' + ppErr(d, ''), 'danger');
+  window.toast('Could not turn on remote access', 'danger');
+  if (PEERS.length) $('srv-init').style.display = '';
 });
-document.getElementById('srv-start')?.addEventListener('click', async () => {
-  const d = await api('/api/wg-server/start', {method:'POST'});
-  window.toast(d.ok ? 'Server started' : 'Failed', d.ok ? 'ok' : 'danger');
-  if (d.ok) setTimeout(()=>location.reload(), 1000);
+$('srv-init').addEventListener('click', async () => {
+  if (!confirm('Set up remote access again from scratch?\n\nEvery device listed below will stop being able to connect and must be added again. Only do this if turning it on keeps failing.')) return;
+  const btn = $('srv-init');
+  btn.disabled = true; btn.textContent = 'Setting up…';
+  let d = await post('/api/wg-server/init');
+  if (d.ok) d = await post('/api/wg-server/start');
+  btn.disabled = false; btn.textContent = 'Set up again from scratch';
+  if (d.ok) { window.toast('Remote access is on', 'ok'); setTimeout(() => location.reload(), 1200); }
+  else { note('srv-note', '✗ That did not work. ' + ppErr(d, ''), 'danger'); window.toast('Setup failed', 'danger'); }
 });
-document.getElementById('peer-form').addEventListener('submit', async e => {
+
+// --- QR code ------------------------------------------------------------------
+async function showQr(name, scroll) {
+  const qr = await ppFetch('/api/wg-server/peer/' + encodeURIComponent(name) + '/qr');
+  if (!qr.ok || !qr.qr_b64) return ppErr(qr, 'The QR code could not be created.') || 'The QR code could not be created.';
+  $('qr-title').textContent = 'Setup code for “' + name + '”';
+  $('qr-img').src = 'data:image/png;base64,' + qr.qr_b64;
+  $('qr-config').textContent = qr.config || '';
+  $('qr-result').style.display = 'block';
+  if (scroll) { $('qr-result').scrollIntoView({behavior: 'smooth', block: 'center'}); $('qr-result').focus({preventScroll: true}); }
+  return '';
+}
+
+// --- device list ----------------------------------------------------------------
+function renderPeers() {
+  const list = $('peer-list');
+  list.replaceChildren(...PEERS.map(name => {
+    const li = document.createElement('li');
+    const n = document.createElement('span'); n.className = 'peer-name'; n.textContent = name;
+    const qr = document.createElement('button'); qr.type = 'button'; qr.className = 'btn'; qr.textContent = 'Show QR code';
+    qr.setAttribute('aria-label', 'Show QR code for ' + name);
+    qr.addEventListener('click', async () => {
+      qr.disabled = true; qr.textContent = 'Loading…';
+      const err = await showQr(name, true);
+      qr.disabled = false; qr.textContent = 'Show QR code';
+      if (err) window.toast('Could not show the QR code for ' + name + ': ' + err, 'danger');
+    });
+    const del = document.createElement('button'); del.type = 'button'; del.className = 'btn btn-danger'; del.textContent = 'Remove';
+    del.setAttribute('aria-label', 'Remove ' + name);
+    del.addEventListener('click', async () => {
+      if (!confirm('Remove “' + name + '”?\n\nThat device will no longer be able to connect to PrivacyPi from outside your home. This cannot be undone — you would have to add it again.')) return;
+      del.disabled = true; del.textContent = 'Removing…';
+      const d = await post('/api/wg-server/peer/' + encodeURIComponent(name) + '/delete');
+      if (d.ok) {
+        const i = PEERS.indexOf(name); if (i >= 0) PEERS.splice(i, 1);
+        if ($('qr-title').textContent.includes('“' + name + '”')) $('qr-result').style.display = 'none';
+        renderPeers();
+        window.toast('Removed ' + name, 'ok');
+      } else {
+        del.disabled = false; del.textContent = 'Remove';
+        window.toast('Could not remove ' + name + '. ' + ppErr(d, 'Try again.'), 'danger');
+      }
+    });
+    li.append(n, qr, del);
+    return li;
+  }));
+  $('peer-empty').style.display = PEERS.length ? 'none' : '';
+}
+
+$('peer-form').addEventListener('submit', async e => {
   e.preventDefault();
-  const fd = new FormData(e.target);
-  const r = await fetch('/api/wg-server/peer', {method:'POST', body:fd, headers: csrfHeaders()});
-  const d = await r.json();
-  if (!d.ok) { window.toast('Failed: ' + (d.error||''), 'danger'); return; }
-  // Now fetch the QR
-  const qr = await fetch(`/api/wg-server/peer/${d.name}/qr`).then(r=>r.json());
-  if (qr.ok) {
-    document.getElementById('qr-img').src = 'data:image/png;base64,' + qr.qr_b64;
-    document.getElementById('qr-config').textContent = qr.config;
-    document.getElementById('qr-result').style.display = 'block';
+  const input = $('peer-name'), name = input.value.trim();
+  if (!/^[A-Za-z0-9_-]+$/.test(name)) { note('peer-note', 'Use only letters, numbers, dashes and underscores in the name — no spaces.', 'danger'); input.focus(); return; }
+  if (PEERS.includes(name)) {
+    const e2 = await showQr(name, true);
+    note('peer-note', e2 ? '✗ ' + e2 : '“' + name + '” is already in your list — here is its setup code again. Pick a different name to add another device.', e2 ? 'danger' : '');
+    return;
   }
-  window.toast(`Peer ${d.name} created`, 'ok');
+  const btn = $('peer-add');
+  btn.disabled = true; btn.textContent = 'Adding…';
+  note('peer-note', '', '');
+  const fd = new FormData(); fd.append('name', name);
+  const d = await ppFetch('/api/wg-server/peer', {method: 'POST', body: fd, headers: csrfHeaders()});
+  btn.disabled = false; btn.textContent = 'Add device';
+  if (!d.ok) {
+    const why = ppErr(d, RUNNING ? 'The device could not be added.' : 'Turn on remote access first (top of this page), then add the device.');
+    note('peer-note', '✗ ' + why, 'danger');
+    window.toast('The device was not added', 'danger');
+    return;
+  }
+  const added = d.name || name;
+  if (!PEERS.includes(added)) PEERS.push(added);
+  renderPeers();
+  input.value = '';
+  const err = await showQr(added, true);
+  if (err) note('peer-note', '✓ “' + added + '” was added, but its QR code could not be shown: ' + err + ' Press “Show QR code” in the list below to try again.', 'danger');
+  else note('peer-note', '✓ “' + added + '” added. Scan the code below with the WireGuard app.', 'ok');
+  window.toast('Added ' + added, 'ok');
 });
-document.querySelectorAll('.peer-qr').forEach(b => b.addEventListener('click', async () => {
-  const qr = await fetch(`/api/wg-server/peer/${b.dataset.name}/qr`).then(r=>r.json());
-  if (qr.ok) {
-    document.getElementById('qr-img').src = 'data:image/png;base64,' + qr.qr_b64;
-    document.getElementById('qr-config').textContent = qr.config;
-    document.getElementById('qr-result').style.display = 'block';
-    document.getElementById('qr-result').scrollIntoView({behavior:'smooth'});
-  }
-}));
-document.querySelectorAll('.peer-del').forEach(b => b.addEventListener('click', async () => {
-  if (!confirm(`Remove peer ${b.dataset.name}?`)) return;
-  await fetch(`/api/wg-server/peer/${b.dataset.name}/delete`, {method:'POST', headers: csrfHeaders()});
-  location.reload();
-}));
+
+renderPeers();
 </script>
 {% endblock %}

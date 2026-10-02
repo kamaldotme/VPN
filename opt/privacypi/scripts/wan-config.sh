@@ -85,8 +85,8 @@ PY
     need_wifi_radio
     ip link set "$WIFI_WAN_IFACE" up 2>/dev/null || true
     raw=$(iw dev "$WIFI_WAN_IFACE" scan 2>/dev/null || true)
-    printf '%s' "$raw" | python3 -c '
-import sys,json,re
+    printf '%s' "$raw" | AP_SSID="$AP_SSID" python3 -c '
+import sys,json,re,os
 nets={}
 ssid=sig=sec=None
 def flush():
@@ -105,7 +105,8 @@ for line in sys.stdin:
     elif "WPA" in line or "RSN" in line:
         sec="wpa"
 flush()
-out=sorted([n for n in nets.values() if n["ssid"]],key=lambda n:-n["signal"])
+own=os.environ.get("AP_SSID","")
+out=sorted([n for n in nets.values() if n["ssid"] and n["ssid"]!=own and n["ssid"]!="PrivacyPi-Setup"],key=lambda n:-n["signal"])
 print(json.dumps({"ok":True,"networks":out}))
 ' || die_json "scan failed"
     ;;

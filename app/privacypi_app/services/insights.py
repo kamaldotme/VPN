@@ -58,7 +58,11 @@ def get_dashboard_insights() -> dict:
     parental = int(stats.get("num_replaced_parental", 0) or 0)
     avg_ms = float(stats.get("avg_processing_time", 0) or 0) * 1000
     top_blocked = stats.get("top_blocked_domains", [])[:5]
-    top_clients = stats.get("top_clients", [])[:5]
+    # Leave out the Pi itself (its own lookups arrive from loopback / the gateway address).
+    from .site import read_site_conf
+    own = {"127.0.0.1", "::1", read_site_conf().get("LAN_GW", "10.10.10.1")}
+    top_clients = [d for d in stats.get("top_clients", [])
+                   if not (isinstance(d, dict) and d and list(d.keys())[0] in own)][:5]
 
     saved_bytes = blocked * BYTES_PER_AD
     saved_ms = blocked * MS_PER_AD

@@ -1,13 +1,32 @@
 {% extends "wizard/_base.html" %}
-{% block step %}Step 3 of {{ steps_total - 1 }}{% endblock %}
+{% block step_n %}3{% endblock %}
+{% block step %}Step 3 of {{ steps_total }}{% endblock %}
 {% block wizard %}
-<h2>Your private WiFi</h2>
+<h1>Name your private WiFi</h1>
 <p class="sub">This replaces the setup network. Your phones, laptops and TVs will join it.</p>
-<form method="post" autocomplete="off">
+<form method="post">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-  <div class="field"><label>WiFi name</label><input name="ssid" value="{{ form.ssid }}" maxlength="32" placeholder="e.g. Home-Private" required autofocus></div>
-  <div class="field"><label>WiFi password (8 or more characters)</label><input type="password" name="psk" minlength="8" maxlength="63" autocomplete="new-password" required></div>
-  <div class="field"><label>Type it again</label><input type="password" name="psk2" minlength="8" maxlength="63" autocomplete="new-password" required></div>
-  <button class="btn btn-primary" style="width:100%">Continue →</button>
+  <div class="field">
+    <label for="wifi-ssid">WiFi name</label>
+    <input id="wifi-ssid" name="ssid" value="{{ form.ssid }}" maxlength="32" placeholder="e.g. Home-Private" required autofocus
+           autocomplete="off" autocorrect="off" spellcheck="false" aria-describedby="wifi-ssid-hint">
+    <p class="field-hint" id="wifi-ssid-hint">Up to 32 letters, numbers, spaces, dots, dashes or underscores.</p>
+  </div>
+  <div class="field">
+    <label for="wifi-psk">WiFi password</label>
+    <input id="wifi-psk" type="password" name="psk" minlength="8" maxlength="63" autocomplete="new-password" required
+           data-meter="wifi-psk-msg" aria-describedby="wifi-psk-msg">
+    <p class="field-msg" id="wifi-psk-msg" aria-live="polite">At least 8 characters. You'll type it once on each device that joins.</p>
+  </div>
+  <div class="field">
+    <label for="wifi-psk2">Type it again</label>
+    <input id="wifi-psk2" type="password" name="psk2" minlength="8" maxlength="63" autocomplete="new-password" required
+           data-match="wifi-psk" data-msg="wifi-psk2-msg" aria-describedby="wifi-psk2-msg">
+    <p class="field-msg" id="wifi-psk2-msg" aria-live="polite"></p>
+  </div>
+  <div class="wizard-actions">
+    <button class="btn btn-primary btn-block btn-lg" type="submit">Continue</button>
+    <a class="back-link" href="{{ url_for('wizard.internet') }}">← Back</a>
+  </div>
 </form>
 {% endblock %}

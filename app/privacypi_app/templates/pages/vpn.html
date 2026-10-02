@@ -1,144 +1,300 @@
 {% extends "base.html" %}
-{% block heading %}VPN Providers{% endblock %}
+{% block heading %}VPN{% endblock %}
 {% block subheading %}Sign in to your VPN once — every device on your WiFi then uses it.{% endblock %}
 {% block content %}
+<style>
+.pg-vpn .btn, .pg-vpn select, .pg-vpn input:not([type=file]) { min-height: 44px; }
+.pg-vpn .btn { justify-content: center; }
+.pg-vpn .btn:disabled { opacity: .55; cursor: not-allowed; }
+.pg-vpn :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.pg-vpn input, .pg-vpn select { font-size: 16px; }
+.pg-vpn .muted { color: #9aa3b8; }
+.pg-vpn .brk { overflow-wrap: anywhere; }
+.pg-vpn .vpn-list { display: grid; gap: var(--space-3); grid-template-columns: repeat(auto-fill, minmax(min(320px, 100%), 1fr)); align-items: start; }
+.pg-vpn details.tile { padding: 0; }
+.pg-vpn details.tile:hover { transform: none; }
+.pg-vpn details.tile > summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 12px; padding: 14px 16px; min-height: 64px; border-radius: var(--radius); }
+.pg-vpn details.tile > summary::-webkit-details-marker { display: none; }
+.pg-vpn details.tile > summary::after { content: '▾'; color: #9aa3b8; font-size: 14px; }
+.pg-vpn details.tile[open] > summary::after { content: '▴'; }
+.pg-vpn .tile-body { padding: 0 16px 16px; }
+.pg-vpn .tile-meta { color: #9aa3b8; }
+.pg-vpn .step-h { font-size: 13px; font-weight: 600; color: var(--text-0); margin: 16px 0 4px; }
+.pg-vpn .step-p { font-size: 12.5px; color: #9aa3b8; margin: 0 0 10px; }
+.pg-vpn .field label { font-size: 13px; }
+.pg-vpn .dropzone { min-height: 48px; font-size: 13px; color: var(--text-1); position: relative; }
+.pg-vpn .dropzone input[type=file] { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+.pg-vpn .dropzone:focus-within { border-color: var(--accent); outline: 2px solid var(--accent); outline-offset: 2px; }
+.pg-vpn .vpn-result { margin: 10px 0 0; min-height: 1.2em; font-size: 13px; overflow-wrap: anywhere; }
+.pg-vpn .how { margin: 0; padding-left: 20px; color: var(--text-1); font-size: 13.5px; }
+.pg-vpn .how li { margin-bottom: 8px; }
+</style>
 
 {% set meta = {
-  'nordvpn': ('NordVPN','OpenVPN / WireGuard'),
-  'expressvpn': ('ExpressVPN','OpenVPN'),
-  'mullvad': ('Mullvad','WireGuard'),
-  'protonvpn': ('Proton VPN','OpenVPN / WireGuard'),
-  'ivpn': ('IVPN','WireGuard'),
-  'surfshark': ('Surfshark','OpenVPN'),
-  'airvpn': ('AirVPN','OpenVPN / WireGuard'),
-  'custom-ovpn': ('Custom OpenVPN','.ovpn upload'),
-  'custom-wg': ('Custom WireGuard','.conf upload'),
+  'nordvpn': ('NordVPN','Easiest — PrivacyPi picks the server for you'),
+  'expressvpn': ('ExpressVPN','Needs a server file'),
+  'mullvad': ('Mullvad','Needs a server file'),
+  'protonvpn': ('Proton VPN','Needs a server file'),
+  'ivpn': ('IVPN','Needs a server file'),
+  'surfshark': ('Surfshark','Needs a server file'),
+  'airvpn': ('AirVPN','Needs a server file'),
+  'custom-ovpn': ('Another VPN (OpenVPN file)','Any company that gives you an .ovpn file'),
+  'custom-wg': ('Another VPN (WireGuard file)','Any company that gives you a WireGuard .conf file'),
 } %}
 
+<div class="pg-vpn">
+
 <div class="card mb-4" id="vpn-now">
-  <p class="card-title">Status</p>
-  <div id="vpn-now-text" class="text-sm text-muted mt-2">Loading…</div>
-  <button id="vpn-off" class="btn btn-sm mt-3" style="display:none">Disconnect VPN</button>
+  <p class="card-title muted">VPN status</p>
+  <div id="vpn-now-text" class="text-sm brk" role="status" aria-live="polite">Loading…</div>
+  <button type="button" id="vpn-off" class="btn btn-danger mt-3" style="display:none">Disconnect VPN</button>
 </div>
 
 <div class="card mb-4">
-  <p class="section-title">How to connect</p>
-  <div class="steps">
-    <div class="step"><b>1</b> <span><strong>NordVPN:</strong> enter your <em>service credentials</em> (Nord Account → NordVPN → Manual setup — not your email login), press Save, then Connect.</span></div>
-    <div class="step"><b>2</b> <span><strong>ExpressVPN and others:</strong> enter the <em>manual configuration</em> username and password from your provider's website, upload the <code>.ovpn</code> (or WireGuard <code>.conf</code>) file for the server you want, then Connect.</span></div>
-    <div class="step"><b>3</b> If the VPN drops, devices lose internet instead of leaking — it reconnects by itself.</div>
-  </div>
+  <p class="section-title">How it works</p>
+  <ol class="how">
+    <li>Tap your VPN company below.</li>
+    <li>Enter the <strong>manual setup</strong> username and password from the VPN company's website. These are usually different from the email and password you log in with.</li>
+    <li>Press <strong>Connect</strong>. If the VPN ever drops, your devices lose internet instead of leaking, and PrivacyPi reconnects by itself.</li>
+  </ol>
 </div>
 
-<div class="grid-auto">
+<div class="vpn-list">
   {% for p in providers %}
   {% set name = meta.get(p, (p|replace('-',' ')|title, 'VPN'))[0] %}
   {% set kind = meta.get(p, ('', 'VPN'))[1] %}
-  <div class="tile" data-provider="{{ p }}">
-    <div class="tile-head">
-      <div class="avatar">{{ name[:2]|upper }}</div>
-      <div style="flex:1">
-        <div class="tile-name">{{ name }}</div>
-        <div class="tile-meta">{{ kind }}</div>
+  {% set needs_login = p != 'custom-wg' %}
+  {% set needs_file = p != 'nordvpn' %}
+  <details class="tile" data-provider="{{ p }}" data-name="{{ name }}">
+    <summary>
+      <span class="avatar" aria-hidden="true">{{ name[:2]|upper }}</span>
+      <span style="flex:1;min-width:0">
+        <span class="tile-name" style="display:block">{{ name }}</span>
+        <span class="tile-meta" style="display:block">{{ kind }}</span>
+      </span>
+      <span class="badge vpn-state">Not set up</span>
+    </summary>
+
+    <div class="tile-body">
+      {% if needs_login %}
+      <p class="step-h">Your VPN sign-in</p>
+      <p class="step-p">
+        {% if p == 'nordvpn' %}On nordaccount.com open NordVPN → “Set up NordVPN manually” and copy the <strong>service username and password</strong>. Your email login will not work.
+        {% elif p == 'custom-ovpn' %}Only needed if your VPN file asks for a username and password.
+        {% else %}Use the “manual setup” (OpenVPN) username and password from your {{ name }} account page.{% endif %}
+      </p>
+      <form class="vpn-creds" data-provider="{{ p }}">
+        <div class="field">
+          <label for="u-{{ p }}">Username</label>
+          <input id="u-{{ p }}" name="username" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" required>
+        </div>
+        <div class="field">
+          <label for="pw-{{ p }}">Password</label>
+          <input id="pw-{{ p }}" type="password" name="password" autocomplete="off" required>
+        </div>
+        <button class="btn" type="submit" style="width:100%">Save sign-in</button>
+      </form>
+      {% endif %}
+
+      {% if needs_file %}
+      <p class="step-h">Server file</p>
+      <p class="step-p">Download a server file ({{ '.conf' if p == 'custom-wg' else '.ovpn or .conf' }}) from your VPN company's website — pick the country you want — then add it here.</p>
+      <form class="vpn-upload" data-provider="{{ p }}" enctype="multipart/form-data">
+        <label class="dropzone">
+          <span class="dz-text">⬆ Choose server file</span>
+          <input type="file" name="file" accept=".ovpn,.conf" aria-label="Server file for {{ name }}">
+        </label>
+      </form>
+      <p class="step-p files-note" style="margin-top:6px"></p>
+      {% endif %}
+
+      {% if p == 'nordvpn' %}
+      <div class="field" style="margin-top:16px">
+        <label for="nord-country">Country to appear in</label>
+        <select id="nord-country" class="nord-country">
+          <option value="">Fastest server (recommended)</option>
+        </select>
       </div>
-      <span class="badge vpn-state">not set</span>
+      {% endif %}
+
+      <button type="button" class="btn btn-primary vpn-connect mt-3" data-provider="{{ p }}" style="width:100%">Connect</button>
+      <p class="vpn-result muted" role="status" aria-live="polite"></p>
     </div>
-
-    <form class="vpn-creds" data-provider="{{ p }}">
-      <div class="field" style="margin-bottom:8px">
-        <input name="username" placeholder="Username / account" autocomplete="off">
-      </div>
-      <div class="flex gap-2">
-        <input type="password" name="password" placeholder="Password" autocomplete="off" style="flex:1">
-        <button class="btn btn-primary btn-sm" type="submit">Save</button>
-      </div>
-    </form>
-
-    <form class="vpn-upload mt-3" data-provider="{{ p }}" enctype="multipart/form-data">
-      <label class="dropzone">
-        ⬆ Upload .ovpn / .conf
-        <input type="file" name="file" accept=".ovpn,.conf" hidden>
-      </label>
-    </form>
-    {% if p == 'nordvpn' %}
-    <select class="nord-country mt-3" style="width:100%">
-      <option value="">Fastest server (recommended)</option>
-    </select>
-    {% endif %}
-    <button class="btn btn-primary vpn-connect mt-3" data-provider="{{ p }}" style="width:100%">Connect</button>
-    <p class="vpn-result text-xs text-muted mt-3" style="margin:0;min-height:1em"></p>
-  </div>
+  </details>
   {% endfor %}
 </div>
 
+</div>
+
 <script>
-function setState(tile, ok, text){
-  const b = tile.querySelector('.vpn-state');
-  b.textContent = text; b.className = 'badge vpn-state ' + (ok ? 'ok' : 'danger');
-  if (ok) tile.classList.add('active');
+const MODE_NAMES = {direct: 'no VPN (direct)', tor: 'Tor', proxy: 'a proxy', killswitch: 'Block all internet'};
+const vpnTiles = Array.from(document.querySelectorAll('.pg-vpn details.tile'));
+let firstRefresh = true, vpnBusy = false;
+
+async function ppFetch(url, opts) {
+  try {
+    const r = await fetch(url, opts);
+    let d = null;
+    try { d = await r.json(); } catch (_) {}
+    if (!d || typeof d !== 'object') {
+      d = {ok: false, error: r.redirected ? 'You were signed out. Reload this page and sign in again.'
+        : 'PrivacyPi gave an unexpected answer (code ' + r.status + '). Try again in a moment.'};
+    } else if (!r.ok && d.ok === undefined) { d.ok = false; }
+    return d;
+  } catch (e) {
+    return {ok: false, unreachable: true, error: 'Could not reach PrivacyPi. Make sure you are still on its WiFi, then try again.'};
+  }
 }
+function ppErr(d, fallback) {
+  const m = d && [d.error, d.stderr, d.err].find(x => typeof x === 'string' && x.trim());
+  if (!m) return fallback;
+  const lines = m.trim().split('\n').map(s => s.trim()).filter(Boolean);
+  const friendly = {'username + password required': 'Enter both the username and the password.',
+    'no file': 'No file was chosen.', 'must be .ovpn or .conf': 'That file type is not supported. Choose a file ending in .ovpn or .conf.',
+    'file too large': 'That file is too large to be a VPN server file.', 'bad country': 'That country is not available. Pick another.'};
+  const last = lines[lines.length - 1].slice(0, 300);
+  return friendly[last] || last;
+}
+function tileName(provider) {
+  const t = vpnTiles.find(x => x.dataset.provider === provider);
+  return t ? t.dataset.name : (provider || 'your VPN');
+}
+function setResult(tile, text, kind) {
+  const out = tile.querySelector('.vpn-result');
+  out.textContent = text;
+  out.className = 'vpn-result ' + (kind === 'ok' ? 'text-ok' : kind === 'danger' ? 'text-danger' : 'muted');
+}
+function setBadge(tile, text, cls) {
+  const b = tile.querySelector('.vpn-state');
+  b.textContent = text; b.className = 'badge vpn-state ' + (cls || '');
+}
+
+// --- save sign-in -------------------------------------------------------------
 document.querySelectorAll('.vpn-creds').forEach(form => form.addEventListener('submit', async e => {
   e.preventDefault();
-  const tile = form.closest('.tile');
-  const r = await fetch(`/api/vpn/${form.dataset.provider}/credentials`, {method:'POST', body:new FormData(form), headers: csrfHeaders()});
-  const d = await r.json();
-  tile.querySelector('.vpn-result').textContent = d.ok ? '✓ credentials saved' : '✗ ' + (d.error || d.stderr || '');
-  if (d.ok) setState(tile, true, 'configured');
-  window.toast(form.dataset.provider + (d.ok ? ' credentials saved' : ' failed'), d.ok ? 'ok' : 'danger');
-}));
-document.querySelectorAll('.vpn-upload input[type=file]').forEach(inp => inp.addEventListener('change', async e => {
-  const form = inp.closest('form'); const tile = form.closest('.tile');
-  const r = await fetch(`/api/vpn/${form.dataset.provider}/upload`, {method:'POST', body:new FormData(form), headers: csrfHeaders()});
-  const d = await r.json();
-  tile.querySelector('.vpn-result').textContent = d.ok ? `✓ ${d.filename} uploaded` : '✗ ' + (d.error || d.stderr || '');
-  if (d.ok) setState(tile, true, 'config added');
-  window.toast(form.dataset.provider + (d.ok ? ' file uploaded' : ' upload failed'), d.ok ? 'ok' : 'danger');
+  const tile = form.closest('.tile'), btn = form.querySelector('button[type=submit]');
+  btn.disabled = true; btn.textContent = 'Saving…';
+  const d = await ppFetch('/api/vpn/' + form.dataset.provider + '/credentials', {method: 'POST', body: new FormData(form), headers: csrfHeaders()});
+  btn.disabled = false; btn.textContent = 'Save sign-in';
+  if (d.ok) {
+    setResult(tile, '✓ Sign-in saved. Now press Connect.', 'ok');
+    form.querySelector('input[type=password], input[name=password]').value = '';
+    window.toast(tile.dataset.name + ': sign-in saved', 'ok');
+  } else {
+    const why = ppErr(d, 'The sign-in could not be saved.');
+    setResult(tile, '✗ ' + why, 'danger');
+    window.toast(why, 'danger');
+  }
+  vpnRefresh();
 }));
 
-// --- connect / disconnect ---------------------------------------------------
+// --- add a server file --------------------------------------------------------
+document.querySelectorAll('.vpn-upload input[type=file]').forEach(inp => inp.addEventListener('change', async () => {
+  if (!inp.files || !inp.files.length) return;
+  const form = inp.closest('form'), tile = form.closest('.tile'), label = form.querySelector('.dz-text');
+  const body = new FormData(form);
+  label.textContent = 'Adding file…'; inp.disabled = true;
+  const d = await ppFetch('/api/vpn/' + form.dataset.provider + '/upload', {method: 'POST', body: body, headers: csrfHeaders()});
+  label.textContent = '⬆ Choose server file'; inp.disabled = false; inp.value = '';
+  if (d.ok) {
+    setResult(tile, '✓ Added ' + (d.filename || 'the file') + '. Now press Connect.', 'ok');
+    window.toast(tile.dataset.name + ': server file added', 'ok');
+  } else {
+    const why = ppErr(d, 'The file could not be added.');
+    setResult(tile, '✗ ' + why, 'danger');
+    window.toast(why, 'danger');
+  }
+  vpnRefresh();
+}));
+
+// --- status -------------------------------------------------------------------
 async function vpnRefresh() {
-  try {
-    const d = await (await fetch('/api/vpn/state')).json();
-    const t = document.getElementById('vpn-now-text'), off = document.getElementById('vpn-off');
-    const on = (d.mode === 'openvpn' && d.tun0_up) || (d.mode === 'wireguard' && d.wg0_up);
-    const pending = (d.mode === 'openvpn' || d.mode === 'wireguard') && !on;
-    t.innerHTML = on ? '<strong class="text-accent">🔐 Connected</strong> — ' + d.provider + (d.server ? ' · <code>' + d.server + '</code>' : '')
-      : pending ? '<strong>Reconnecting…</strong> devices are blocked from the internet until the tunnel is back.'
-      : 'Not using a VPN (current mode: ' + (d.mode || 'direct') + ').';
-    off.style.display = (on || pending) ? '' : 'none';
-    document.querySelectorAll('.tile').forEach(tile => {
-      const info = (d.providers || {})[tile.dataset.provider];
-      if (!info) return;
-      const b = tile.querySelector('.vpn-state');
-      if (on && d.provider === tile.dataset.provider) { b.textContent = 'connected'; b.className = 'badge vpn-state ok'; tile.classList.add('active'); }
-      else if (info.credentials || info.servers) { b.textContent = 'ready'; b.className = 'badge vpn-state ok'; tile.classList.remove('active'); }
-    });
-  } catch (e) {}
+  if (vpnBusy) return;
+  const t = document.getElementById('vpn-now-text'), off = document.getElementById('vpn-off');
+  const d = await ppFetch('/api/vpn/state');
+  if (vpnBusy) return;
+  if (d.ok === false) {
+    if (firstRefresh) t.textContent = 'Could not check the VPN status. ' + ppErr(d, '');
+    return;
+  }
+  const isVpn = d.mode === 'openvpn' || d.mode === 'wireguard';
+  const on = (d.mode === 'openvpn' && d.tun0_up) || (d.mode === 'wireguard' && d.wg0_up);
+  const pending = isVpn && !on;
+  t.replaceChildren();
+  const strong = document.createElement('strong');
+  if (on) {
+    strong.className = 'text-ok'; strong.textContent = '🔐 Connected';
+    t.append(strong, ' — every device on your WiFi is using ' + tileName(d.provider) + '.');
+  } else if (pending) {
+    strong.className = 'text-warn'; strong.textContent = 'Reconnecting…';
+    t.append(strong, ' Your devices have no internet until ' + tileName(d.provider) + ' is back, so nothing leaks. This usually takes under a minute.');
+  } else {
+    strong.textContent = 'Not connected.';
+    t.append(strong, ' Your WiFi is currently using ' + (MODE_NAMES[d.mode] || 'no VPN') + '.');
+  }
+  off.style.display = (on || pending) ? '' : 'none';
+  vpnTiles.forEach(tile => {
+    const info = (d.providers || {})[tile.dataset.provider];
+    const mine = isVpn && d.provider === tile.dataset.provider;
+    const hasLogin = !!(info && info.credentials), files = info ? Number(info.servers) || 0 : 0;
+    const needsFile = !!tile.querySelector('.vpn-upload'), needsLogin = !!tile.querySelector('.vpn-creds');
+    const note = tile.querySelector('.files-note');
+    if (note) note.textContent = files ? (files === 1 ? '1 server file saved.' : files + ' server files saved.') : 'No server file added yet.';
+    tile.classList.toggle('active', mine && on);
+    if (mine && on) setBadge(tile, 'Connected', 'ok');
+    else if (mine && pending) setBadge(tile, 'Reconnecting', 'warn');
+    else if ((!needsFile || files) && (!needsLogin || hasLogin || tile.dataset.provider === 'custom-ovpn')) setBadge(tile, 'Ready', 'info');
+    else if (hasLogin || files) setBadge(tile, 'Half set up', '');
+    else setBadge(tile, 'Not set up', '');
+    if (firstRefresh && (mine || hasLogin || files)) tile.open = true;
+  });
+  firstRefresh = false;
 }
+
+// --- connect / disconnect -----------------------------------------------------
 document.querySelectorAll('.vpn-connect').forEach(btn => btn.addEventListener('click', async () => {
-  const tile = btn.closest('.tile'), out = tile.querySelector('.vpn-result');
+  if (vpnBusy) return;
+  const tile = btn.closest('.tile');
   const fd = new FormData();
   const sel = tile.querySelector('.nord-country');
   if (sel) fd.append('country', sel.value);
-  btn.disabled = true; btn.textContent = 'Connecting… (up to a minute)';
-  try {
-    const d = await (await fetch(`/api/vpn/${btn.dataset.provider}/connect`, {method: 'POST', body: fd, headers: csrfHeaders()})).json();
-    out.textContent = d.ok ? '✓ connected' : '✗ ' + (d.error || 'failed');
-    window.toast(d.ok ? 'VPN connected' : (d.error || 'VPN failed'), d.ok ? 'ok' : 'danger');
-  } catch (e) { out.textContent = '✗ request failed'; }
-  btn.disabled = false; btn.textContent = 'Connect'; vpnRefresh();
+  const all = document.querySelectorAll('.vpn-connect');
+  vpnBusy = true;
+  all.forEach(b => { b.disabled = true; });
+  btn.textContent = 'Connecting… (up to a minute)';
+  setResult(tile, 'Connecting — your devices may lose internet for a moment.', '');
+  const d = await ppFetch('/api/vpn/' + btn.dataset.provider + '/connect', {method: 'POST', body: fd, headers: csrfHeaders()});
+  vpnBusy = false;
+  all.forEach(b => { b.disabled = false; });
+  btn.textContent = 'Connect';
+  if (d.ok) {
+    setResult(tile, '✓ Connected. Every device on your WiFi now uses ' + tile.dataset.name + '.', 'ok');
+    window.toast('VPN connected', 'ok');
+  } else {
+    const why = ppErr(d, 'The VPN did not connect. Check the username, password and server file, then try again.');
+    setResult(tile, '✗ ' + why, 'danger');
+    window.toast('VPN did not connect', 'danger');
+  }
+  vpnRefresh();
 }));
-document.getElementById('vpn-off').addEventListener('click', async () => {
-  await fetch('/api/vpn/disconnect', {method: 'POST', headers: csrfHeaders()});
-  window.toast('VPN disconnected', 'ok'); vpnRefresh();
+
+document.getElementById('vpn-off').addEventListener('click', async e => {
+  if (vpnBusy) return;
+  if (!confirm('Disconnect the VPN?\n\nYour devices will go back to normal internet. Websites and your internet provider will see your real address again.')) return;
+  const btn = e.currentTarget;
+  vpnBusy = true; btn.disabled = true; btn.textContent = 'Disconnecting…';
+  const d = await ppFetch('/api/vpn/disconnect', {method: 'POST', headers: csrfHeaders()});
+  vpnBusy = false; btn.disabled = false; btn.textContent = 'Disconnect VPN';
+  if (d.ok) window.toast('VPN disconnected — using normal internet', 'ok');
+  else window.toast(ppErr(d, 'The VPN could not be disconnected.'), 'danger');
+  vpnRefresh();
 });
+
 (async () => {
   const sel = document.querySelector('.nord-country');
   if (!sel) return;
-  try {
-    const d = await (await fetch('/api/vpn/nord/countries')).json();
-    (d.countries || []).forEach(c => { const o = document.createElement('option'); o.value = c.id; o.textContent = c.name; sel.appendChild(o); });
-  } catch (e) {}
+  const d = await ppFetch('/api/vpn/nord/countries');
+  (d.countries || []).forEach(c => { const o = document.createElement('option'); o.value = c.id; o.textContent = c.name; sel.appendChild(o); });
 })();
 vpnRefresh(); setInterval(vpnRefresh, 6000);
 </script>

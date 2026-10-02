@@ -1,238 +1,497 @@
 {% extends "base.html" %}
-{% block heading %}System{% endblock %}
-{% block subheading %}Health, password change, and danger-zone actions.{% endblock %}
+{% block heading %}System &amp; password{% endblock %}
+{% block subheading %}Device health, your password, updates, restart and reset.{% endblock %}
 {% block content %}
+<style>
+  .sy-page [hidden] { display: none !important; }
+  .sy-page .btn { min-height: 44px; }
+  .sy-page .btn:disabled { opacity: .6; cursor: progress; }
+  .sy-page .btn:focus-visible, .sy-page summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .sy-page input, .sy-page select { min-height: 44px; font-size: 16px; }
+  .sy-page .text-muted { color: var(--text-1); }
+  .sy-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: stretch; }
+  .sy-row > input { flex: 1 1 180px; width: auto; min-width: 0; }
+  .sy-wrap { overflow-wrap: anywhere; word-break: break-word; }
+  .sy-status { font-size: 13px; margin: 12px 0 0; min-height: 1.4em; }
+  .sy-health { display: grid; gap: var(--space-3); grid-template-columns: repeat(3, 1fr); }
+  .sy-health .card-value { font-size: 18px; }
+  @media (max-width: 520px) { .sy-health { grid-template-columns: 1fr; } }
+  .sy-adv > summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; font-weight: 600; font-size: 14px; }
+  .sy-sub { border-top: 1px solid var(--border); padding-top: var(--space-4); margin-top: var(--space-4); }
+  .sy-sub h3 { font-size: 14px; margin: 0 0 6px; font-weight: 600; }
+  .sy-danger-item { display: flex; gap: 12px; justify-content: space-between; align-items: center; flex-wrap: wrap;
+    padding: 14px 0; border-top: 1px solid var(--border); }
+  .sy-danger-item:first-of-type { border-top: none; padding-top: 0; }
+  .sy-danger-item > div { flex: 1 1 220px; }
+  .sy-danger-item strong { display: block; font-size: 14px; }
+  .sy-banner { border: 1px solid rgba(251,191,36,.35); background: rgba(251,191,36,.08); border-radius: var(--radius);
+    padding: 12px 14px; font-size: 13.5px; margin-top: 14px; }
+  .sy-qr { width: 200px; height: 200px; max-width: 100%; background: #fff; padding: 8px; border-radius: 8px; display: block; }
+</style>
 
-<div class="grid grid-3 mb-5">
+<div class="sy-page">
+
+{% set load_parts = (info.load|string).split() %}
+{% set load1 = load_parts[0]|float(-1) if load_parts else -1 %}
+<div class="sy-health mb-4">
   <div class="card">
-    <p class="card-title">Uptime</p>
-    <p class="card-value" style="font-size:18px">{{ info.uptime }}</p>
+    <p class="card-title">Running for</p>
+    <p class="card-value sy-wrap">{{ (info.uptime|string)|replace('up ', '', 1) if info.uptime != '?' else 'Unknown' }}</p>
+    <p class="card-sub">Time since PrivacyPi was last switched on or restarted.</p>
   </div>
   <div class="card">
-    <p class="card-title">Load</p>
-    <p class="card-value" style="font-size:18px;font-family:'JetBrains Mono',monospace">{{ info.load }}</p>
+    <p class="card-title">How busy</p>
+    <p class="card-value">
+      {% if load1 < 0 %}Unknown{% elif load1 < 2 %}<span class="text-ok">Relaxed</span>{% elif load1 < 4 %}<span class="text-warn">Busy</span>{% else %}<span class="text-danger">Very busy</span>{% endif %}
+    </p>
+    <p class="card-sub">{% if load1 >= 0 %}Workload {{ load_parts[0] }} — under 4 is fine.{% else %}Could not read the workload.{% endif %}</p>
   </div>
   <div class="card">
-    <p class="card-title">CPU temp</p>
-    <p class="card-value">{{ info.temp }} <span style="font-size:14px;color:var(--text-2)">°C</span></p>
-  </div>
-</div>
-
-
-<div class="card mb-4">
-  <p class="card-title">Updates</p>
-  <p class="text-sm text-muted mb-3">Check if Flask app files are newer than the running service.</p>
-  <button class="btn" id="upd-check">Check for updates</button>
-  <button class="btn btn-primary" id="upd-apply" style="display:none">Apply update</button>
-  <pre id="upd-out" class="text-xs mt-3" style="display:none"></pre>
-</div>
-
-<script>
-document.getElementById('upd-check').addEventListener('click', async () => {
-  const r = await fetch('/api/system/update-check');
-  const d = await r.json();
-  const out = document.getElementById('upd-out');
-  out.textContent = JSON.stringify(d, null, 2);
-  out.style.display = 'block';
-  if (d.needs_restart) {
-    document.getElementById('upd-apply').style.display = 'inline-flex';
-    window.toast('Update available', 'ok');
-  } else {
-    window.toast('Up to date', 'ok');
-  }
-});
-document.getElementById('upd-apply').addEventListener('click', async () => {
-  if (!confirm('Apply update? Flask will restart briefly.')) return;
-  const r = await fetch('/api/system/update-apply', {method:'POST', headers: csrfHeaders()});
-  window.toast('Update applied', 'ok');
-});
-</script>
-
-<div class="card mb-4">
-  <p class="card-title">🧅 Tor onion service for admin UI</p>
-  <p class="text-sm text-muted mb-3">
-    Reach this dashboard from anywhere via a <code>.onion</code> address — no port-forwarding,
-    no public WAN exposure. (Tor must be running.)
-  </p>
-  <div class="flex gap-2">
-    <button class="btn" id="onion-enable">Enable</button>
-    <button class="btn" id="onion-disable">Disable</button>
-  </div>
-  <p id="onion-out" class="text-sm mt-3" style="font-family:'JetBrains Mono',monospace;color:var(--accent)"></p>
-</div>
-
-<div class="card mb-4">
-  <p class="card-title">📡 DoH server for roaming devices</p>
-  <p class="text-sm text-muted mb-3">
-    Expose <code>https://10.20.0.1/dns-query</code> to WireGuard clients so phones get
-    encrypted, ad-filtered DNS even off-network.
-  </p>
-  <div class="flex gap-2">
-    <button class="btn" id="doh-enable">Enable</button>
-    <button class="btn" id="doh-disable">Disable</button>
-  </div>
-  <p id="doh-out" class="text-sm mt-3" style="font-family:'JetBrains Mono',monospace"></p>
-</div>
-
-<div class="card mb-4">
-  <p class="card-title">📱 USB-tether WAN failover</p>
-  <p class="text-sm text-muted mb-3">
-    When ISP fails, fall over to a USB-tethered phone (<code>usb0</code>). Useful for
-    remote/travel scenarios — egress becomes mobile carrier.
-  </p>
-  <p id="tether-info" class="text-sm" style="font-family:'JetBrains Mono',monospace"></p>
-  <div class="flex gap-2 mt-2">
-    <button class="btn" id="tether-eth0">Use eth0</button>
-    <button class="btn" id="tether-usb0">Use usb0 (phone)</button>
-    <button class="btn" id="tether-refresh">Refresh</button>
+    <p class="card-title">Temperature</p>
+    <p class="card-value">
+      {% if info.temp is number %}
+        <span class="{{ 'text-danger' if info.temp >= 80 else ('text-warn' if info.temp >= 70 else 'text-ok') }}">{{ info.temp }} °C</span>
+      {% else %}Unknown{% endif %}
+    </p>
+    <p class="card-sub">
+      {% if info.temp is number and info.temp >= 80 %}Too hot — move it somewhere cooler with air around it.
+      {% elif info.temp is number and info.temp >= 70 %}Warm — give it some air.
+      {% else %}Under 70 °C is normal.{% endif %}
+    </p>
   </div>
 </div>
 
 <div class="card mb-4">
-  <p class="card-title">Change admin password</p>
-  <form id="pwf">
+  <p class="card-title">Change dashboard password</p>
+  <p class="text-sm text-muted mb-3">This is the password you use to sign in to this dashboard. It is not your WiFi password.</p>
+  <form id="pwf" autocomplete="off">
     <div class="grid grid-3">
-      <div class="field"><label>Current</label><input type="password" name="current"></div>
-      <div class="field"><label>New (8+ characters)</label><input type="password" name="new"></div>
-      <div class="field"><label>Confirm</label><input type="password" name="new2"></div>
+      <div class="field"><label for="pw-cur">Current password</label><input id="pw-cur" type="password" name="current" autocomplete="current-password" required></div>
+      <div class="field"><label for="pw-new">New password (at least 8 characters)</label><input id="pw-new" type="password" name="new" autocomplete="new-password" minlength="8" required></div>
+      <div class="field"><label for="pw-new2">New password again</label><input id="pw-new2" type="password" name="new2" autocomplete="new-password" minlength="8" required></div>
     </div>
-    <button class="btn btn-primary">Change password</button>
+    <button class="btn btn-primary" type="submit" id="pw-btn">Change password</button>
+    <p class="sy-status" id="pw-status" role="status" aria-live="polite"></p>
   </form>
 </div>
 
 <div class="card mb-4">
-  <p class="card-title">🔑 Two-step login (optional)</p>
-  <p class="text-sm text-muted">Ask for a 6-digit code from an authenticator app (Google Authenticator, Authy, 1Password…) when signing in to this dashboard.</p>
-  <div id="tfa-off" style="display:none">
-    <button class="btn mt-3" id="tfa-begin">Turn on</button>
-    <div id="tfa-setup" style="display:none" class="mt-3">
-      <img id="tfa-qr" alt="QR code" style="width:180px;height:180px;background:#fff;padding:6px;border-radius:8px">
-      <p class="text-xs text-muted mt-2">Scan with your app, or type this key: <code id="tfa-secret"></code></p>
-      <div class="flex gap-2 mt-2" style="max-width:320px">
-        <input id="tfa-code" inputmode="numeric" maxlength="6" placeholder="6-digit code" style="flex:1">
-        <button class="btn btn-primary" id="tfa-enable">Confirm</button>
+  <p class="card-title">Two-step login (optional)</p>
+  <p class="text-sm text-muted">
+    Extra protection for this dashboard: after your password, you also type a 6-digit code from an
+    authenticator app on your phone (Google Authenticator, Authy, 1Password…). You do not have to turn this on.
+  </p>
+  <p class="sy-status" id="tfa-status" role="status" aria-live="polite">Checking…</p>
+  <div id="tfa-off" hidden>
+    <button class="btn btn-primary mt-3" id="tfa-begin" type="button">Turn on two-step login</button>
+    <div id="tfa-setup" hidden class="mt-3">
+      <p class="text-sm mb-3"><strong>1.</strong> Open your authenticator app and scan this code:</p>
+      <img id="tfa-qr" class="sy-qr" alt="QR code to scan with your authenticator app">
+      <p class="text-xs text-muted mt-3">Cannot scan? Type this key into the app instead: <code id="tfa-secret" class="sy-wrap"></code></p>
+      <label for="tfa-code" class="text-sm mt-3" style="display:block;margin-bottom:6px"><strong>2.</strong> Type the 6-digit code the app shows:</label>
+      <div class="sy-row" style="max-width:360px">
+        <input id="tfa-code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]*" maxlength="6" placeholder="123456">
+        <button class="btn btn-primary" id="tfa-enable" type="button">Confirm</button>
+      </div>
+      <p class="text-xs text-muted mt-3">If you lose your phone you will not be able to sign in, and a factory reset is the only way back in.</p>
+    </div>
+  </div>
+  <div id="tfa-on" hidden>
+    <p class="text-sm mt-3"><span class="badge ok">On</span> You are asked for a code each time you sign in.</p>
+    <label for="tfa-pw" class="text-sm mt-3" style="display:block;margin-bottom:6px">To turn it off, type your dashboard password:</label>
+    <div class="sy-row" style="max-width:420px">
+      <input id="tfa-pw" type="password" autocomplete="current-password" placeholder="Dashboard password">
+      <button class="btn btn-danger" id="tfa-disable" type="button">Turn off</button>
+    </div>
+  </div>
+</div>
+
+<div class="card mb-4">
+  <p class="card-title">Software update</p>
+  <p class="text-sm text-muted mb-3">
+    Checks whether newer PrivacyPi software has been copied onto this device and is waiting to be switched on.
+  </p>
+  <div class="sy-row">
+    <button class="btn" id="upd-check" type="button">Check for updates</button>
+    <button class="btn btn-primary" id="upd-apply" type="button" hidden>Apply update</button>
+  </div>
+  <p class="sy-status" id="upd-status" role="status" aria-live="polite"></p>
+</div>
+
+<div class="card mb-4">
+  <details class="sy-adv">
+    <summary>Advanced options <span class="text-xs text-muted" style="font-weight:400;margin-left:8px">most people can skip these</span></summary>
+
+    <div class="sy-sub">
+      <h3>Open this dashboard from anywhere (through Tor)</h3>
+      <p class="text-sm text-muted mb-3">
+        Gives the dashboard a private <code>.onion</code> address that you can open with Tor Browser when you are
+        away from home. Nothing is exposed to the regular internet. Tor must be running on PrivacyPi.
+      </p>
+      <div class="sy-row">
+        <button class="btn" id="onion-enable" type="button">Turn on</button>
+        <button class="btn" id="onion-disable" type="button">Turn off</button>
+      </div>
+      <p id="onion-out" class="sy-status sy-wrap" role="status" aria-live="polite">Checking…</p>
+    </div>
+
+    <div class="sy-sub">
+      <h3>Ad-blocking for your phone when you are away</h3>
+      <p class="text-sm text-muted mb-3">
+        If your phone connects back home with <a href="/wg-server" class="text-accent">Travel (WG)</a>, this lets it
+        keep using PrivacyPi's ad and tracker blocking over an encrypted connection.
+      </p>
+      <div class="sy-row">
+        <button class="btn" id="doh-enable" type="button">Turn on</button>
+        <button class="btn" id="doh-disable" type="button">Turn off</button>
+      </div>
+      <p id="doh-out" class="sy-status sy-wrap" role="status" aria-live="polite">Checking…</p>
+    </div>
+
+    <div class="sy-sub">
+      <h3>Use a phone's mobile data as the internet source</h3>
+      <p class="text-sm text-muted mb-3">
+        If your home internet goes down, plug a phone into PrivacyPi with a USB cable, turn on
+        "USB tethering" on the phone, then switch here. Your devices then use the phone's mobile data.
+      </p>
+      <p id="tether-info" class="text-sm sy-wrap" role="status" aria-live="polite">Checking…</p>
+      <div class="sy-row mt-3">
+        <button class="btn" id="tether-eth0" type="button">Use network cable</button>
+        <button class="btn" id="tether-usb0" type="button">Use phone (USB)</button>
+        <button class="btn btn-ghost" id="tether-refresh" type="button">Check again</button>
       </div>
     </div>
-  </div>
-  <div id="tfa-on" style="display:none">
-    <p class="text-sm mt-3"><strong class="text-accent">✓ On</strong></p>
-    <div class="flex gap-2 mt-2" style="max-width:360px">
-      <input id="tfa-pw" type="password" placeholder="Dashboard password" style="flex:1">
-      <button class="btn" id="tfa-disable">Turn off</button>
-    </div>
-  </div>
+  </details>
 </div>
 
 <div class="card" style="border-color:rgba(248,113,113,0.3)">
-  <p class="card-title text-danger">Danger zone</p>
-  <p class="text-sm text-muted mb-4">These actions will interrupt service. Confirm carefully.</p>
-  <div class="flex gap-3" style="flex-wrap:wrap">
-    <button class="btn sys-act" data-act="restart-flask">↻ Restart Flask</button>
-    <button class="btn btn-danger sys-act" data-act="reboot">⏻ Reboot Pi (1 min delay)</button>
-    <button class="btn btn-danger sys-act" data-act="factory-reset">🗑 Factory reset</button>
+  <p class="card-title text-danger">Restart and reset</p>
+  <p class="text-sm text-muted mb-4">These interrupt the internet for everyone connected to PrivacyPi. You will be asked to confirm.</p>
+
+  <div class="sy-danger-item">
+    <div>
+      <strong>Restart the dashboard</strong>
+      <span class="text-sm text-muted">Only this web page restarts (a few seconds). WiFi and internet keep working. Try this if the dashboard acts strangely.</span>
+    </div>
+    <button class="btn sys-act" data-act="restart-flask" type="button">Restart dashboard</button>
   </div>
+  <div class="sy-danger-item">
+    <div>
+      <strong>Restart PrivacyPi</strong>
+      <span class="text-sm text-muted">Turns the whole device off and on again. It starts in about 1 minute, then WiFi is gone for about another minute. Your settings are kept.</span>
+    </div>
+    <button class="btn btn-danger sys-act" data-act="reboot" type="button">Restart device</button>
+  </div>
+  <div class="sy-danger-item">
+    <div>
+      <strong>Shut down</strong>
+      <span class="text-sm text-muted">Switches PrivacyPi off safely. Do this before unplugging it for a long time. To start it again, unplug the power and plug it back in.</span>
+    </div>
+    <button class="btn btn-danger sys-act" data-act="shutdown" type="button">Shut down</button>
+  </div>
+  <div class="sy-danger-item">
+    <div>
+      <strong>Factory reset</strong>
+      <span class="text-sm text-muted">Erases <b>everything</b> — settings, passwords, VPN accounts — and starts first-time setup again. This cannot be undone. <a href="/backup" class="text-accent">Make a backup first.</a></span>
+    </div>
+    <button class="btn btn-danger sys-act" data-act="factory-reset" type="button">Factory reset</button>
+  </div>
+
+  <div id="sys-status" class="sy-banner" role="status" aria-live="assertive" hidden></div>
+</div>
+
 </div>
 
 <script>
-async function tfaRefresh() {
-  const d = await (await fetch('/api/2fa')).json();
-  document.getElementById('tfa-on').style.display = d.enabled ? '' : 'none';
-  document.getElementById('tfa-off').style.display = d.enabled ? 'none' : '';
-}
-tfaRefresh();
-document.getElementById('tfa-begin').addEventListener('click', async () => {
-  const d = await (await fetch('/api/2fa/begin', {method: 'POST', headers: csrfHeaders()})).json();
-  document.getElementById('tfa-qr').src = 'data:image/png;base64,' + d.qr;
-  document.getElementById('tfa-secret').textContent = d.secret;
-  document.getElementById('tfa-setup').style.display = '';
-});
-document.getElementById('tfa-enable').addEventListener('click', async () => {
-  const fd = new FormData(); fd.append('code', document.getElementById('tfa-code').value);
-  const d = await (await fetch('/api/2fa/enable', {method: 'POST', body: fd, headers: csrfHeaders()})).json();
-  window.toast(d.ok ? 'Two-step login is on' : (d.error || 'Failed'), d.ok ? 'ok' : 'danger');
-  if (d.ok) { document.getElementById('tfa-setup').style.display = 'none'; tfaRefresh(); }
-});
-document.getElementById('tfa-disable').addEventListener('click', async () => {
-  const fd = new FormData(); fd.append('password', document.getElementById('tfa-pw').value);
-  const d = await (await fetch('/api/2fa/disable', {method: 'POST', body: fd, headers: csrfHeaders()})).json();
-  window.toast(d.ok ? 'Two-step login is off' : (d.error || 'Failed'), d.ok ? 'ok' : 'danger');
-  if (d.ok) tfaRefresh();
-});
+(function () {
+  const $ = id => document.getElementById(id);
+  const NET_ERR = 'Could not reach PrivacyPi. Make sure you are still connected to its WiFi, then try again.';
 
-document.getElementById('pwf').addEventListener('submit', async e => {
-  e.preventDefault();
-  const fd = new FormData(e.target);
-  const r = await fetch('/api/password', {method:'POST', body:fd, headers: csrfHeaders()});
-  const d = await r.json();
-  window.toast(d.ok ? 'Password changed' : (d.error || 'Failed'), d.ok ? 'ok' : 'danger');
-});
-document.querySelectorAll('.sys-act').forEach(b => b.addEventListener('click', async () => {
-  const warn = b.dataset.act === 'factory-reset'
-    ? 'Factory reset erases ALL settings, passwords and VPN accounts and restarts PrivacyPi into first-time setup (WiFi "PrivacyPi-Setup"). Continue?'
-    : `Confirm: ${b.dataset.act}?`;
-  if (!confirm(warn)) return;
-  const r = await fetch(`/api/system/${b.dataset.act}`, {method:'POST', headers: csrfHeaders()});
-  const d = await r.json();
-  window.toast(d.ok ? `${b.dataset.act} initiated` : 'Failed', d.ok ? 'ok' : 'danger');
-}));
+  async function api(url, opts) {
+    let r;
+    try { r = await fetch(url, opts); }
+    catch (e) { const err = new Error(NET_ERR); err.network = true; throw err; }
+    let d = null;
+    try { d = await r.json(); } catch (e) {}
+    if (!d || typeof d !== 'object') {
+      throw new Error(r.redirected ? 'You were signed out. Reload the page and sign in again.'
+                                   : 'PrivacyPi could not complete that. Please try again.');
+    }
+    return d;
+  }
+  const post = (url, body) => api(url, {method: 'POST', body, headers: csrfHeaders()});
 
-// Onion admin
-async function onionStatus() {
-  const r = await fetch('/api/onion-admin'); const d = await r.json();
-  const out = document.getElementById('onion-out');
-  if (d.onion) out.textContent = (d.enabled ? '✓ ' : '○ ') + d.onion;
-  else out.textContent = '(disabled)';
-}
-document.getElementById('onion-enable').addEventListener('click', async () => {
-  const r = await fetch('/api/onion-admin/enable', {method:'POST', headers: csrfHeaders()});
-  const d = await r.json();
-  window.toast(d.ok ? 'Onion enabled' : ('Fail: ' + (d.error||'')), d.ok ? 'ok' : 'danger');
-  onionStatus();
-});
-document.getElementById('onion-disable').addEventListener('click', async () => {
-  const r = await fetch('/api/onion-admin/disable', {method:'POST', headers: csrfHeaders()});
-  const d = await r.json();
-  window.toast(d.ok ? 'Onion disabled' : 'Fail', d.ok ? 'ok' : 'danger');
-  onionStatus();
-});
-onionStatus();
+  async function busy(btn, label, fn) {
+    const orig = btn.textContent;
+    btn.disabled = true; btn.setAttribute('aria-busy', 'true'); btn.textContent = label;
+    try { return await fn(); }
+    catch (e) { window.toast(e.message || 'Something went wrong. Please try again.', 'danger'); }
+    finally { btn.disabled = false; btn.removeAttribute('aria-busy'); btn.textContent = orig; }
+  }
 
-// DoH
-async function dohStatus() {
-  const r = await fetch('/api/doh'); const d = await r.json();
-  document.getElementById('doh-out').textContent = (d.status || 'unknown') + (d.endpoint ? ' — ' + d.endpoint : '');
-}
-document.getElementById('doh-enable').addEventListener('click', async () => {
-  const r = await fetch('/api/doh/enable', {method:'POST', headers: csrfHeaders()});
-  const d = await r.json();
-  window.toast(d.ok ? 'DoH enabled' : 'Fail', d.ok ? 'ok' : 'danger');
-  dohStatus();
-});
-document.getElementById('doh-disable').addEventListener('click', async () => {
-  const r = await fetch('/api/doh/disable', {method:'POST', headers: csrfHeaders()});
-  const d = await r.json();
-  window.toast(d.ok ? 'DoH disabled' : 'Fail', d.ok ? 'ok' : 'danger');
-  dohStatus();
-});
-dohStatus();
+  // ---- Password ----
+  $('pwf').addEventListener('submit', e => {
+    e.preventDefault();
+    const st = $('pw-status');
+    const n1 = $('pw-new').value, n2 = $('pw-new2').value;
+    st.className = 'sy-status text-danger';
+    if (n1.length < 8) { st.textContent = 'The new password needs at least 8 characters.'; return; }
+    if (n1 !== n2) { st.textContent = 'The two new passwords are not the same. Type them again.'; return; }
+    st.textContent = '';
+    busy($('pw-btn'), 'Changing…', async () => {
+      const d = await post('/api/password', new FormData(e.target));
+      if (d.ok) {
+        e.target.reset();
+        st.className = 'sy-status text-ok';
+        st.textContent = 'Password changed. Use the new one next time you sign in.';
+        window.toast('Password changed', 'ok');
+      } else {
+        const wrongCur = /current/i.test(d.error || '');
+        st.textContent = wrongCur ? 'The current password is not right.'
+                                  : 'The password could not be changed. Check that both new passwords match and have at least 8 characters.';
+      }
+    });
+  });
 
-// Tether
-async function tetherStatus() {
-  const r = await fetch('/api/tether-wan'); const d = await r.json();
-  document.getElementById('tether-info').textContent =
-    'wan=' + (d.wan||'?') + '  eth0=' + (d.eth0||'?') + '  usb0=' + (d.usb0||'?') + '  candidates=' + (d.candidates||'');
-}
-async function tetherSwitch(target) {
-  if (!confirm('Switch WAN to ' + target + '?')) return;
-  const fd = new FormData(); fd.append('target', target);
-  const r = await fetch('/api/tether-wan/switch', {method:'POST', body:fd, headers: csrfHeaders()});
-  const d = await r.json();
-  window.toast(d.ok ? ('WAN → ' + target) : ('Fail: ' + (d.error||'')), d.ok ? 'ok' : 'danger');
-  tetherStatus();
-}
-document.getElementById('tether-eth0').addEventListener('click', () => tetherSwitch('eth0'));
-document.getElementById('tether-usb0').addEventListener('click', () => tetherSwitch('usb0'));
-document.getElementById('tether-refresh').addEventListener('click', tetherStatus);
-tetherStatus();
+  // ---- Two-step login ----
+  async function tfaRefresh() {
+    const st = $('tfa-status');
+    try {
+      const d = await api('/api/2fa');
+      st.textContent = '';
+      $('tfa-on').hidden = !d.enabled;
+      $('tfa-off').hidden = !!d.enabled;
+    } catch (e) {
+      st.className = 'sy-status text-danger';
+      st.textContent = 'Could not check whether two-step login is on. Reload the page to try again.';
+    }
+  }
+  $('tfa-begin').addEventListener('click', e => busy(e.currentTarget, 'Preparing…', async () => {
+    const d = await post('/api/2fa/begin');
+    if (!d.qr || !d.secret) throw new Error('Could not start the setup. Please try again.');
+    $('tfa-qr').src = 'data:image/png;base64,' + d.qr;
+    $('tfa-secret').textContent = d.secret;
+    $('tfa-setup').hidden = false;
+    $('tfa-code').value = '';
+    $('tfa-code').focus();
+  }));
+  $('tfa-enable').addEventListener('click', e => {
+    const code = $('tfa-code').value.trim();
+    if (!/^\d{6}$/.test(code)) { window.toast('Type the 6-digit code from your authenticator app.', 'danger'); $('tfa-code').focus(); return; }
+    busy(e.currentTarget, 'Checking…', async () => {
+      const fd = new FormData(); fd.append('code', code);
+      const d = await post('/api/2fa/enable', fd);
+      if (d.ok) {
+        window.toast('Two-step login is on', 'ok');
+        $('tfa-setup').hidden = true;
+        await tfaRefresh();
+      } else {
+        window.toast(d.error || 'That code was not accepted. Wait for a new code and try again.', 'danger');
+      }
+    });
+  });
+  $('tfa-code').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); $('tfa-enable').click(); } });
+  $('tfa-disable').addEventListener('click', e => {
+    const pw = $('tfa-pw').value;
+    if (!pw) { window.toast('Type your dashboard password first.', 'danger'); $('tfa-pw').focus(); return; }
+    if (!confirm('Turn off two-step login?\n\nAfter this, anyone who knows your dashboard password can sign in without a code.')) return;
+    busy(e.currentTarget, 'Turning off…', async () => {
+      const fd = new FormData(); fd.append('password', pw);
+      const d = await post('/api/2fa/disable', fd);
+      if (d.ok) {
+        $('tfa-pw').value = '';
+        window.toast('Two-step login is off', 'ok');
+        await tfaRefresh();
+      } else {
+        window.toast('That password is not right.', 'danger');
+      }
+    });
+  });
+  tfaRefresh();
+
+  // ---- Updates ----
+  $('upd-check').addEventListener('click', e => busy(e.currentTarget, 'Checking…', async () => {
+    const st = $('upd-status');
+    st.className = 'sy-status';
+    let d;
+    try { d = await api('/api/system/update-check'); }
+    catch (err) { st.className = 'sy-status text-danger'; st.textContent = err.message; return; }
+    if (d.error) {
+      st.className = 'sy-status text-danger';
+      st.textContent = 'Could not check for updates right now. Please try again later.';
+      $('upd-apply').hidden = true;
+    } else if (d.needs_restart) {
+      st.textContent = 'An update is ready. Tap "Apply update" to switch it on — the dashboard restarts for a few seconds.';
+      $('upd-apply').hidden = false;
+    } else {
+      st.className = 'sy-status text-ok';
+      st.textContent = 'PrivacyPi is up to date.';
+      $('upd-apply').hidden = true;
+    }
+  }));
+  $('upd-apply').addEventListener('click', e => {
+    if (!confirm('Apply the update now?\n\nThe dashboard restarts and will not respond for a few seconds. WiFi and internet keep working.')) return;
+    const btn = e.currentTarget;
+    busy(btn, 'Updating… please wait', async () => {
+      const st = $('upd-status');
+      try {
+        const d = await post('/api/system/update-apply');
+        if (d.ok) {
+          st.className = 'sy-status text-ok';
+          st.textContent = 'Update applied. Reload this page in a few seconds.';
+          btn.hidden = true;
+          window.toast('Update applied', 'ok');
+        } else {
+          st.className = 'sy-status text-danger';
+          st.textContent = 'The update could not be applied. Nothing was changed — try again later.';
+        }
+      } catch (err) {
+        // The dashboard restarts as part of the update, so a dropped connection is expected.
+        st.className = 'sy-status';
+        st.textContent = 'The dashboard is restarting to finish the update. Wait about 10 seconds, then reload this page.';
+        btn.hidden = true;
+      }
+    });
+  });
+
+  // ---- Restart / reset ----
+  const SYS = {
+    'restart-flask': {
+      confirm: 'Restart the dashboard?\n\nThis page will stop responding for a few seconds. WiFi and internet keep working.',
+      busy: 'Restarting…',
+      done: 'The dashboard is restarting. Wait about 10 seconds, then reload this page.',
+    },
+    'reboot': {
+      confirm: 'Restart PrivacyPi?\n\nThe restart begins in about 1 minute. Then the WiFi disappears and everyone loses internet for about a minute. Your settings are kept.',
+      busy: 'Starting restart…',
+      done: 'PrivacyPi will restart in about 1 minute. The WiFi will drop, then come back about a minute later. Your devices should reconnect by themselves — then reload this page.',
+    },
+    'shutdown': {
+      confirm: 'Shut PrivacyPi down? The WiFi and internet stop for everyone connected. To start it again you have to unplug the power and plug it back in.',
+      busy: 'Shutting down…',
+      done: 'PrivacyPi is shutting down. Wait about 20 seconds before unplugging it.',
+    },
+    'factory-reset': {
+      confirm: 'Factory reset erases ALL settings, passwords and VPN accounts. This cannot be undone.\n\nPrivacyPi then restarts into first-time setup. Your current WiFi name will disappear and you will need to join the WiFi "PrivacyPi-Setup" (password: privacypi).\n\nErase everything and start over?',
+      confirm2: 'Last check: really erase everything on this PrivacyPi?',
+      busy: 'Erasing…',
+      done: 'Factory reset started. PrivacyPi is erasing its settings and restarting (about 2 minutes). Then join the WiFi "PrivacyPi-Setup" with the password "privacypi" and open http://10.10.10.1 to set it up again.',
+    },
+  };
+  document.querySelectorAll('.sys-act').forEach(b => b.addEventListener('click', async () => {
+    const act = b.dataset.act, cfg = SYS[act];
+    if (!cfg) return;
+    if (!confirm(cfg.confirm)) return;
+    if (cfg.confirm2 && !confirm(cfg.confirm2)) return;
+    const banner = $('sys-status');
+    const orig = b.textContent;
+    b.disabled = true; b.textContent = cfg.busy;
+    let started = false;
+    try {
+      const d = await post('/api/system/' + act);
+      started = !!d.ok;
+    } catch (err) {
+      // These actions stop the dashboard itself, so losing the connection usually means it worked.
+      started = !!err.network;
+      if (!started) window.toast(err.message, 'danger');
+    } finally {
+      b.disabled = false; b.textContent = orig;
+    }
+    banner.hidden = false;
+    if (started) {
+      banner.textContent = cfg.done;
+      window.toast('Started', 'ok');
+    } else {
+      banner.textContent = 'That did not work. Nothing was changed. Please try again; if it keeps failing, unplug PrivacyPi, wait 10 seconds and plug it back in.';
+      window.toast('That did not work', 'danger');
+    }
+    banner.scrollIntoView({block: 'nearest'});
+  }));
+
+  // ---- Dashboard through Tor ----
+  async function onionStatus() {
+    const out = $('onion-out');
+    try {
+      const d = await api('/api/onion-admin');
+      if (d.onion && d.enabled !== false) { out.className = 'sy-status sy-wrap'; out.textContent = 'On. Open this address in Tor Browser: ' + d.onion; }
+      else if (d.ok === false) { out.className = 'sy-status sy-wrap text-muted'; out.textContent = 'Status not available right now.'; }
+      else { out.className = 'sy-status sy-wrap text-muted'; out.textContent = 'Off.'; }
+    } catch (e) { out.className = 'sy-status sy-wrap text-muted'; out.textContent = 'Status not available right now.'; }
+  }
+  $('onion-enable').addEventListener('click', e => busy(e.currentTarget, 'Turning on…', async () => {
+    const d = await post('/api/onion-admin/enable');
+    if (d.ok) window.toast('Turned on', 'ok');
+    else if (/not generated/i.test(d.error || '')) window.toast('Tor is still creating the address. Wait a minute, then reload this page.', 'ok');
+    else window.toast('Could not turn this on. Make sure Tor is running on the Tor page, then try again.', 'danger');
+    await onionStatus();
+  }));
+  $('onion-disable').addEventListener('click', e => {
+    if (!confirm('Turn off access through Tor?\n\nYou will no longer be able to open this dashboard from outside your home.')) return;
+    busy(e.currentTarget, 'Turning off…', async () => {
+      const d = await post('/api/onion-admin/disable');
+      window.toast(d.ok ? 'Turned off' : 'Could not turn this off. Please try again.', d.ok ? 'ok' : 'danger');
+      await onionStatus();
+    });
+  });
+
+  // ---- Ad-blocking for travelling phones ----
+  async function dohStatus() {
+    const out = $('doh-out');
+    try {
+      const d = await api('/api/doh');
+      if (d.status === 'active') { out.className = 'sy-status sy-wrap'; out.textContent = 'On.' + (d.endpoint ? ' Address for the phone\'s "private DNS" setting: ' + d.endpoint : ''); }
+      else if (d.ok === false) { out.className = 'sy-status sy-wrap text-muted'; out.textContent = 'Status not available right now.'; }
+      else { out.className = 'sy-status sy-wrap text-muted'; out.textContent = 'Off.'; }
+    } catch (e) { out.className = 'sy-status sy-wrap text-muted'; out.textContent = 'Status not available right now.'; }
+  }
+  $('doh-enable').addEventListener('click', e => busy(e.currentTarget, 'Turning on…', async () => {
+    const d = await post('/api/doh/enable');
+    window.toast(d.ok ? 'Turned on' : 'Could not turn this on. Set up Travel (WG) first, then try again.', d.ok ? 'ok' : 'danger');
+    await dohStatus();
+  }));
+  $('doh-disable').addEventListener('click', e => busy(e.currentTarget, 'Turning off…', async () => {
+    const d = await post('/api/doh/disable');
+    window.toast(d.ok ? 'Turned off' : 'Could not turn this off. Please try again.', d.ok ? 'ok' : 'danger');
+    await dohStatus();
+  }));
+
+  // ---- Phone as internet source ----
+  function ifaceName(n) {
+    if (!n) return 'nothing (no internet source found)';
+    if (n === 'usb0') return 'the phone on USB';
+    if (/^wl/.test(n)) return 'WiFi';
+    return 'the network cable';
+  }
+  async function tetherStatus() {
+    const out = $('tether-info');
+    try {
+      const d = await api('/api/tether-wan');
+      if (d.ok === false) throw new Error('unavailable');
+      const phone = d.usb0 && d.usb0 !== 'missing';
+      out.className = 'text-sm sy-wrap';
+      out.textContent = 'Internet currently comes in through ' + ifaceName(d.wan) + '. ' +
+        (phone ? 'A phone is connected on USB.' : 'No phone detected on USB.');
+    } catch (e) {
+      out.className = 'text-sm sy-wrap text-muted';
+      out.textContent = 'Status not available right now.';
+    }
+  }
+  function tetherSwitch(btn, target, label) {
+    if (!confirm('Switch the internet source to ' + label + '?\n\nEveryone connected to PrivacyPi may lose internet for a few seconds.')) return;
+    busy(btn, 'Switching…', async () => {
+      const fd = new FormData(); fd.append('target', target);
+      const d = await post('/api/tether-wan/switch', fd);
+      if (d.ok) window.toast('Internet now comes through ' + label, 'ok');
+      else if (target === 'usb0') window.toast('Could not switch. Check that the phone is plugged in and "USB tethering" is turned on.', 'danger');
+      else window.toast('Could not switch. Check that the network cable is plugged in.', 'danger');
+      await tetherStatus();
+    });
+  }
+  $('tether-eth0').addEventListener('click', e => tetherSwitch(e.currentTarget, 'eth0', 'the network cable'));
+  $('tether-usb0').addEventListener('click', e => tetherSwitch(e.currentTarget, 'usb0', 'the phone on USB'));
+  $('tether-refresh').addEventListener('click', e => busy(e.currentTarget, 'Checking…', tetherStatus));
+
+  onionStatus(); dohStatus(); tetherStatus();
+})();
 </script>
 {% endblock %}

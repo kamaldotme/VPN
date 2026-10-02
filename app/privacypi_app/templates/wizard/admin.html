@@ -1,12 +1,28 @@
 {% extends "wizard/_base.html" %}
-{% block step %}Step 1 of {{ steps_total - 1 }}{% endblock %}
+{% block step_n %}1{% endblock %}
+{% block step %}Step 1 of {{ steps_total }}{% endblock %}
 {% block wizard %}
-<h2>Dashboard password</h2>
-<p class="sub">You'll use this to change settings later. At least {{ min_pw }} characters — write it down.</p>
-<form method="post" autocomplete="off">
+<h1>Create a dashboard password</h1>
+<p class="sub">You'll need this password to change PrivacyPi's settings later. Write it down somewhere safe.</p>
+<form method="post">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-  <div class="field"><label>Password</label><input type="password" name="password" minlength="{{ min_pw }}" autocomplete="new-password" autofocus required></div>
-  <div class="field"><label>Type it again</label><input type="password" name="password2" minlength="{{ min_pw }}" autocomplete="new-password" required></div>
-  <button class="btn btn-primary" style="width:100%">Continue →</button>
+  {# Lets a password manager save this under the right username. #}
+  <input type="text" name="username" value="admin" autocomplete="username" hidden>
+  <div class="field">
+    <label for="admin-pw">Password</label>
+    <input id="admin-pw" type="password" name="password" minlength="{{ min_pw }}" autocomplete="new-password"
+           autofocus required data-meter="admin-pw-msg" aria-describedby="admin-pw-msg">
+    <p class="field-msg" id="admin-pw-msg" aria-live="polite">At least {{ min_pw }} characters. A few random words work well.</p>
+  </div>
+  <div class="field">
+    <label for="admin-pw2">Type it again</label>
+    <input id="admin-pw2" type="password" name="password2" minlength="{{ min_pw }}" autocomplete="new-password"
+           required data-match="admin-pw" data-msg="admin-pw2-msg" aria-describedby="admin-pw2-msg">
+    <p class="field-msg" id="admin-pw2-msg" aria-live="polite"></p>
+  </div>
+  <div class="wizard-actions">
+    <button class="btn btn-primary btn-block btn-lg" type="submit">Continue</button>
+    <a class="back-link" href="{{ url_for('wizard.welcome') }}">← Back</a>
+  </div>
 </form>
 {% endblock %}

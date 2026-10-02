@@ -1,81 +1,207 @@
 {% extends "base.html" %}
-{% block heading %}Diagnostics{% endblock %}
-{% block subheading %}Run network tools from the Pi.{% endblock %}
+{% block heading %}Troubleshooting{% endblock %}
+{% block subheading %}Simple checks to find out why the internet is slow or not working.{% endblock %}
 {% block content %}
+<style>
+  .dg-page [hidden] { display: none !important; }
+  .dg-page .btn, .dg-page .btn-sm { min-height: 44px; padding: 9px 16px; font-size: 13.5px; }
+  .dg-page .btn:disabled { opacity: .6; cursor: progress; }
+  .dg-page .btn:focus-visible, .dg-page summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .dg-page input { min-height: 44px; font-size: 16px; }
+  .dg-page .text-muted { color: var(--text-1); }
+  .dg-tools { display: grid; gap: 8px; }
+  .dg-tool { display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap;
+    border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px 12px; background: var(--bg-2); }
+  .dg-tool > div { flex: 1 1 180px; min-width: 0; }
+  .dg-tool strong { display: block; font-size: 13.5px; }
+  .dg-verdict { border-radius: var(--radius-sm); padding: 12px 14px; font-size: 14px; font-weight: 600; margin-top: var(--space-4);
+    border: 1px solid var(--border); background: var(--bg-2); overflow-wrap: anywhere; }
+  .dg-verdict.ok { color: var(--ok); border-color: rgba(74,222,128,.35); background: rgba(74,222,128,.08); }
+  .dg-verdict.bad { color: var(--danger); border-color: rgba(248,113,113,.35); background: rgba(248,113,113,.08); }
+  .dg-verdict small { display: block; font-weight: 400; font-size: 12.5px; color: var(--text-1); margin-top: 4px; }
+  .dg-details > summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; font-size: 12.5px; color: var(--text-1); }
+  .dg-details pre { max-height: 300px; overflow: auto; margin: 0; }
+  .dg-speed { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .dg-speed > div { background: var(--bg-2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px; min-width: 0; }
+  .dg-speed .n { font-size: 18px; font-weight: 600; margin: 0; overflow-wrap: anywhere; }
+  .dg-speed .l { font-size: 11.5px; color: var(--text-1); margin: 0 0 2px; }
+</style>
 
+<div class="dg-page">
 <div class="grid grid-2 mb-4">
   <div class="card">
-    <p class="card-title">Network tools</p>
-    <div class="flex gap-2 mb-3" style="align-items:flex-end">
-      <div class="field" style="flex:1;margin:0">
-        <label>Target</label>
-        <input id="target" value="cloudflare.com" placeholder="host or IP">
+    <p class="card-title">Connection checks</p>
+    <p class="text-sm text-muted mb-3">
+      Type a website and pick a check. The check is run from PrivacyPi itself, so it tells you
+      whether PrivacyPi can reach the internet.
+    </p>
+    <div class="field">
+      <label for="target">Website or address to check</label>
+      <input id="target" value="cloudflare.com" placeholder="example.com" autocapitalize="none" autocorrect="off" spellcheck="false" inputmode="url">
+    </div>
+    <div class="dg-tools">
+      <div class="dg-tool">
+        <div><strong>Can it be reached?</strong><span class="text-xs text-muted">Sends a few test signals and waits for an answer (ping).</span></div>
+        <button class="btn" type="button" data-tool="ping">Check</button>
+      </div>
+      <div class="dg-tool">
+        <div><strong>Can the name be found?</strong><span class="text-xs text-muted">Looks up the website's internet address (DNS lookup).</span></div>
+        <button class="btn" type="button" data-tool="dig">Look up</button>
+      </div>
+      <div class="dg-tool">
+        <div><strong>Which route does it take?</strong><span class="text-xs text-muted">Lists the stops between PrivacyPi and the website (traceroute). Takes up to 15 seconds.</span></div>
+        <button class="btn" type="button" data-tool="traceroute">Trace</button>
       </div>
     </div>
-    <div class="flex gap-2 mb-3">
-      <button class="btn btn-sm" data-tool="ping">Ping</button>
-      <button class="btn btn-sm" data-tool="traceroute">Traceroute</button>
-      <button class="btn btn-sm" data-tool="dig">Dig</button>
-    </div>
-    <pre id="out" style="min-height:200px;max-height:300px;overflow:auto">click a tool to run</pre>
+
+    <div id="verdict" class="dg-verdict" role="status" aria-live="polite">Pick a check above to start.</div>
+    <details class="dg-details" id="out-details" hidden>
+      <summary>Technical details</summary>
+      <pre id="out" tabindex="0" aria-label="Raw output of the check"></pre>
+    </details>
   </div>
-  
+
   <div class="card">
     <p class="card-title">Speed test</p>
-    <p class="text-sm text-muted mb-3">Tests current routing path. Click below — runs ~30s.</p>
-    <button class="btn btn-primary" id="run-speedtest">Run speed test</button>
-    <div id="speed-result" class="mt-4" style="display:none">
-      <div class="grid grid-3">
-        <div><p class="text-xs text-muted">Download</p><p style="font-size:18px;font-weight:600;color:var(--info);margin:0" id="sp-dl">—</p></div>
-        <div><p class="text-xs text-muted">Upload</p><p style="font-size:18px;font-weight:600;color:var(--accent);margin:0" id="sp-ul">—</p></div>
-        <div><p class="text-xs text-muted">Ping</p><p style="font-size:18px;font-weight:600;margin:0" id="sp-ping">—</p></div>
+    <p class="text-sm text-muted mb-3">
+      Measures how fast the internet is through PrivacyPi right now, with your current privacy mode.
+      A VPN or Tor is normally slower than a direct connection. Takes about 30 seconds and uses some data.
+    </p>
+    <button class="btn btn-primary" id="run-speedtest" type="button">Run speed test</button>
+    <p id="sp-status" class="text-sm mt-3" role="status" aria-live="polite" style="min-height:1.4em;overflow-wrap:anywhere"></p>
+    <div id="speed-result" class="mt-3" hidden>
+      <div class="dg-speed">
+        <div><p class="l">Download</p><p class="n" style="color:var(--info)" id="sp-dl">—</p></div>
+        <div><p class="l">Upload</p><p class="n" style="color:var(--accent)" id="sp-ul">—</p></div>
+        <div><p class="l">Delay</p><p class="n" id="sp-ping">—</p></div>
       </div>
-      <p class="text-xs text-muted mt-3" id="sp-server"></p>
+      <p class="text-xs text-muted mt-3">
+        <b>Download</b>: how fast pages and videos load (higher is better).
+        <b>Upload</b>: how fast you send photos and files (higher is better).
+        <b>Delay</b>: reaction time, matters for calls and games (lower is better).
+      </p>
+      <p class="text-xs text-muted" id="sp-server" style="overflow-wrap:anywhere"></p>
     </div>
-    <p id="sp-status" class="text-xs text-muted mt-3"></p>
   </div>
+</div>
 </div>
 
 <script>
-document.querySelectorAll('[data-tool]').forEach(b => {
-  b.addEventListener('click', async () => {
-    const target = document.getElementById('target').value;
-    const out = document.getElementById('out');
-    out.textContent = `running ${b.dataset.tool} ${target}…`;
-    const r = await fetch(`/api/diag/${b.dataset.tool}`, {
-      method:'POST', headers:{'Content-Type':'application/json', ...csrfHeaders()},
-      body: JSON.stringify({target})
-    });
-    const d = await r.json();
-    out.textContent = (d.stdout || '') + (d.stderr ? '\n[stderr]\n' + d.stderr : '');
-  });
-});
+(function () {
+  const $ = id => document.getElementById(id);
+  const toolButtons = Array.from(document.querySelectorAll('[data-tool]'));
 
-document.getElementById('run-speedtest').addEventListener('click', async (e) => {
-  e.target.disabled = true;
-  document.getElementById('sp-status').textContent = 'running… (~30s)';
-  document.getElementById('speed-result').style.display = 'none';
-  try {
-    const r = await fetch('/api/speedtest', {method: 'POST', headers: csrfHeaders()});
-    const d = await r.json();
-    if (d.error) {
-      document.getElementById('sp-status').textContent = 'error: ' + d.error;
-    } else {
-      const dl = d.download ? (d.download / 1e6).toFixed(1) : '?';
-      const ul = d.upload ? (d.upload / 1e6).toFixed(1) : '?';
-      const ping = d.ping ? d.ping.toFixed(1) : '?';
-      const srv = (d.server && (d.server.sponsor || d.server.name)) || '?';
-      document.getElementById('sp-dl').textContent = dl + ' Mbps';
-      document.getElementById('sp-ul').textContent = ul + ' Mbps';
-      document.getElementById('sp-ping').textContent = ping + ' ms';
-      document.getElementById('sp-server').textContent = 'Server: ' + srv;
-      document.getElementById('speed-result').style.display = 'block';
-      document.getElementById('sp-status').textContent = 'completed at ' + new Date().toLocaleTimeString();
-    }
-  } catch (err) {
-    document.getElementById('sp-status').textContent = 'error: ' + err;
+  function verdict(kind, title, hint) {
+    const v = $('verdict');
+    v.className = 'dg-verdict ' + (kind || '');
+    v.textContent = title;
+    if (hint) { const s = document.createElement('small'); s.textContent = hint; v.appendChild(s); }
   }
-  e.target.disabled = false;
-});
+
+  // Turn the raw tool output into one plain sentence.
+  function explain(tool, target, d) {
+    const out = (d.stdout || '').trim();
+    if (tool === 'ping') {
+      if (d.rc === 0) {
+        const m = out.match(/=\s*[\d.]+\/([\d.]+)\//);
+        return ['ok', '✓ Works — ' + target + ' answered.', m ? 'Average answer time: ' + Math.round(parseFloat(m[1])) + ' ms (lower is better).' : ''];
+      }
+      const unknown = /not known|unknown host|resolve|failure in name/i.test((d.stderr || '') + out);
+      return ['bad', '✗ Does not work — no answer from ' + target + '.',
+        unknown ? 'The name could not be found. Check the spelling, or try "Can the name be found?".'
+                : 'Either the internet is down, or this website does not answer test signals. Try another website such as cloudflare.com.'];
+    }
+    if (tool === 'dig') {
+      const lines = out.split('\n').map(s => s.trim()).filter(s => s && s[0] !== ';');
+      if (d.rc === 0 && lines.length) {
+        const ips = lines.filter(s => /^[0-9a-f.:]+$/i.test(s));
+        return ['ok', '✓ Works — the name ' + target + ' was found.', 'Address: ' + (ips.length ? ips : lines).slice(0, 3).join(', ')];
+      }
+      return ['bad', '✗ Does not work — the name ' + target + ' could not be found.',
+        'Check the spelling. If every name fails, the internet or the ad-blocker (DNS) on PrivacyPi may be down, or this name is blocked.'];
+    }
+    // traceroute
+    const hops = out.split('\n').filter(l => /^\s*\d+\s/.test(l));
+    const answered = hops.filter(l => !/^\s*\d+\s+\*\s*$/.test(l));
+    if (d.rc === 0 && answered.length) {
+      return ['ok', '✓ Works — a route to ' + target + ' was found.', hops.length + ' stops along the way. Stops shown as * simply did not answer; that is normal.'];
+    }
+    return ['bad', '✗ Does not work — no route to ' + target + ' was found.', 'The internet may be down, or the name is wrong.'];
+  }
+
+  toolButtons.forEach(b => {
+    b.addEventListener('click', async () => {
+      const tool = b.dataset.tool;
+      const target = $('target').value.trim();
+      if (!target) { verdict('bad', 'Type a website or address first.'); $('target').focus(); return; }
+      if (!/^[A-Za-z0-9.\-:]+$/.test(target)) {
+        verdict('bad', 'That does not look like a website name.', 'Type only the name, for example example.com — without "https://" or anything after a slash.');
+        $('target').focus(); return;
+      }
+      const orig = b.textContent;
+      toolButtons.forEach(x => x.disabled = true);
+      b.textContent = 'Checking…';
+      $('out-details').hidden = true; $('out').textContent = '';
+      verdict('', 'Checking ' + target + '… this takes a few seconds.');
+      try {
+        const r = await fetch('/api/diag/' + tool, {
+          method: 'POST', headers: {'Content-Type': 'application/json', ...csrfHeaders()},
+          body: JSON.stringify({target})
+        });
+        let d = null;
+        try { d = await r.json(); } catch (e) {}
+        if (!d || typeof d !== 'object' || !('rc' in d)) {
+          if (tool === 'traceroute') verdict('bad', '✗ The route check took too long and was stopped.', 'This often means the website is far away or the internet is slow. "Can it be reached?" is a quicker check.');
+          else verdict('bad', '✗ The check could not be run.', r.redirected ? 'You were signed out. Reload the page and sign in again.' : 'Please try again in a moment.');
+        } else {
+          const [kind, title, hint] = explain(tool, target, d);
+          verdict(kind, title, hint);
+          const raw = ((d.stdout || '') + (d.stderr ? '\n' + d.stderr : '')).trim();
+          if (raw) { $('out').textContent = raw; $('out-details').hidden = false; }
+        }
+      } catch (e) {
+        verdict('bad', '✗ Could not reach PrivacyPi.', 'Make sure you are still connected to its WiFi, then try again.');
+      } finally {
+        toolButtons.forEach(x => x.disabled = false);
+        b.textContent = orig;
+      }
+    });
+  });
+  $('target').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); toolButtons[0].click(); } });
+
+  function num(v, digits) { return (typeof v === 'number' && isFinite(v)) ? v.toFixed(digits) : null; }
+
+  $('run-speedtest').addEventListener('click', async e => {
+    const btn = e.currentTarget, st = $('sp-status');
+    btn.disabled = true; btn.textContent = 'Testing… about 30 seconds';
+    st.className = 'text-sm mt-3'; st.textContent = 'Measuring your speed. Please wait…';
+    $('speed-result').hidden = true;
+    try {
+      const r = await fetch('/api/speedtest', {method: 'POST', headers: csrfHeaders()});
+      let d = null;
+      try { d = await r.json(); } catch (err) {}
+      if (!d || typeof d !== 'object' || d.error || !d.download) {
+        st.className = 'text-sm mt-3 text-danger';
+        st.textContent = r.redirected ? 'You were signed out. Reload the page and sign in again.'
+          : '✗ The speed test could not finish. Check that the internet is working (try "Can it be reached?"), then try again. Speed tests often fail over Tor.';
+      } else {
+        const dl = num(d.download / 1e6, 1), ul = num(d.upload / 1e6, 1), ping = num(d.ping, 0);
+        const srv = d.server && (d.server.sponsor || d.server.name);
+        $('sp-dl').textContent = dl ? dl + ' Mbps' : 'Not measured';
+        $('sp-ul').textContent = ul ? ul + ' Mbps' : 'Not measured';
+        $('sp-ping').textContent = ping ? ping + ' ms' : 'Not measured';
+        $('sp-server').textContent = srv ? 'Measured against: ' + srv : '';
+        $('speed-result').hidden = false;
+        st.className = 'text-sm mt-3 text-ok';
+        st.textContent = '✓ Finished at ' + new Date().toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'}) + '.';
+      }
+    } catch (err) {
+      st.className = 'text-sm mt-3 text-danger';
+      st.textContent = '✗ Could not reach PrivacyPi. Make sure you are still connected to its WiFi, then try again.';
+    } finally {
+      btn.disabled = false; btn.textContent = 'Run speed test';
+    }
+  });
+})();
 </script>
 {% endblock %}
